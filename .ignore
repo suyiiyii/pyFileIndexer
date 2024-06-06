@@ -1,5 +1,40 @@
-node_modules
-.venv
-__pycache__
+
 .git
 .vscode
+
+# python
+.venv
+__pycache__
+.mypy_cache
+site-packages
+
+# go
+go/pkg
+
+# java
+target/classes
+
+# front
+node_modules
+uni_modules
+.next
+unpackage/dist
+
+# ntqq
+nt_qq/nt_data
+nt_qq\nt_db
+nt_qq\global
+Image/Group2
+
+# wechat
+
+
+
+FileStorage/CustomEmotion
+FileStorage/Cache
+FileStorage/General
+FileStorage/MsgAttach
+FileStorage/Sns
+FileStorage/Temp
+
+
