@@ -13,10 +13,8 @@ from pathlib import Path
 from datetime import datetime
 import logging
 import os
-from dotenv import load_dotenv
-import configparser
+from config import settings
 
-load_dotenv()
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -75,13 +73,14 @@ def get_hashes(file_path: str | Path):
 def get_metadata(file: Path):
     '''获取文件的元数据。'''
     stat = file.stat()
+    assert settings.get("SCANNED") is not None
     meta = FileMeta(
         name=file.name,
         path=file.absolute().as_posix(),
-        machine=os.getenv('MACHINE_NAME', 'unknown'),
+        machine=settings.MACHINE_NAME,
         created=datetime.fromtimestamp(stat.st_ctime),
         modified=datetime.fromtimestamp(stat.st_mtime),
-        scanned=datetime.now(),
+        scanned=settings.get("SCANNED"),
     )
     return meta
 
@@ -100,19 +99,19 @@ def scan_file(file: Path):
                 logger.info(f'Skipping: {file}')
                 return
 
-        # 获取文件哈希
-        hashes = get_hashes(file)
+    # 获取文件哈希
+    hashes = get_hashes(file)
 
-        # 如果哈希信息已经存在，则直接使用
-        hash_info = get_hash_by_hash(hashes)
-        # 如果哈希信息不存在，则创建
-        if hash_info is not None:
-            meta.hash_id = hash_info.id
-        else:
-            hash_info = FileHash(size=file.stat().st_size, **hashes)
-            meta.hash_id = add_hash(hash_info)
+    # 如果哈希信息已经存在，则直接使用
+    hash_info = get_hash_by_hash(hashes)
+    # 如果哈希信息不存在，则创建
+    if hash_info is not None:
+        meta.hash_id = hash_info.id
+    else:
+        hash_info = FileHash(size=file.stat().st_size, **hashes)
+        meta.hash_id = add_hash(hash_info)
 
-        add_file(meta)
+    add_file(meta)
 
 
 def scan_directory(directory: Path):
@@ -144,6 +143,17 @@ def scan_directory(directory: Path):
             logger.error(e)
 
 
+def scan(path: str | Path):
+    '''扫描指定目录。'''
+    if not os.path.exists(path):
+        logger.error(f'Path not exists: {path}')
+        return
+    if isinstance(path, str):
+        path = Path(path)
+    settings.set("SCANNED", datetime.now())
+    scan_directory(path)
+
+
 if __name__ == '__main__':
-    scan_directory(Path(r'C:\Users\suyiiyii\Desktop'))
+    scan(r'C:\Users\suyiiyii\Desktop')
     # scan_directory(Path(r'C:\Users\suyiiyii\Documents'))
