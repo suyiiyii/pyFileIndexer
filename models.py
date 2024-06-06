@@ -23,18 +23,20 @@ class FileMeta(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     # 哈希信息，外键到 FileHash
     hash_id = Column(Integer, index=True)
-    # 文件名
-    name = Column(String)
+    # 文件名，索引
+    name = Column(String, index=True)
     # 机器名称
     machine = Column(String)
-    # 文件路径
-    path = Column(String)
+    # 文件路径，全文索引
+    path = Column(String, index=True)
     # 创建日期
     created = Column(DateTime)
     # 修改日期
     modified = Column(DateTime)
     # 扫描日期
     scanned = Column(DateTime)
+    # 操作
+    operation = Column(String)
 
 
 # 创建数据库表

@@ -1,5 +1,11 @@
 import hashlib
-from database import session_factory
+from database import (
+    add_file,
+    add_hash,
+    get_file_by_path,
+    get_hash_by_hash,
+    get_hash_by_id,
+)
 from models import FileHash, FileMeta
 import datetime
 import time
@@ -8,6 +14,7 @@ from datetime import datetime
 import logging
 import os
 from dotenv import load_dotenv
+import configparser
 
 load_dotenv()
 
@@ -83,47 +90,29 @@ def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
 
-    with session_factory() as session:
-
-        # 如果文件的元数据和大小没有被修改，则不再扫描
-        meta_in_db = (
-            session.query(FileMeta).filter_by(path=file.absolute().as_posix()).first()
-        )
-        if meta_in_db:
-            if file.stat().st_size == session.get(FileHash, meta_in_db.hash_id).size:
-                meta.hash_id = meta_in_db.hash_id
-                meta.scanned = meta_in_db.scanned
-                if meta == meta_in_db:
-                    logger.info(f'Skipping: {file}')
-                    return
+    # 如果文件的元数据和大小没有被修改，则不再扫描
+    meta_in_db = get_file_by_path(file.absolute().as_posix())
+    if meta_in_db:
+        if file.stat().st_size == get_hash_by_id(meta_in_db.hash_id).size:
+            meta.hash_id = meta_in_db.hash_id
+            meta.scanned = meta_in_db.scanned
+            if meta == meta_in_db:
+                logger.info(f'Skipping: {file}')
+                return
 
         # 获取文件哈希
         hashes = get_hashes(file)
-        # 查询哈希信息是否存在
-        hash_info = (
-            session.query(FileHash)
-            .filter_by(
-                md5=hashes['md5'],
-                sha1=hashes['sha1'],
-                sha256=hashes['sha256'],
-            )
-            .first()
-        )
 
+        # 如果哈希信息已经存在，则直接使用
+        hash_info = get_hash_by_hash(hashes)
         # 如果哈希信息不存在，则创建
-        if not hash_info:
-            hash_info = FileHash(
-                size=file.stat().st_size,
-                md5=hashes['md5'],
-                sha1=hashes['sha1'],
-                sha256=hashes['sha256'],
-            )
-            session.add(hash_info)
-            session.commit()
+        if hash_info is not None:
+            meta.hash_id = hash_info.id
+        else:
+            hash_info = FileHash(size=file.stat().st_size, **hashes)
+            meta.hash_id = add_hash(hash_info)
 
-        meta.hash_id = hash_info.id
-        session.add(meta)
-        session.commit()
+        add_file(meta)
 
 
 def scan_directory(directory: Path):
@@ -150,8 +139,9 @@ def scan_directory(directory: Path):
                 scan_directory(path)
             else:
                 scan_file(path)
-        except Exception as e:
+        except IOError as e:
             logger.error(f'Error: {e}')
+            logger.error(e)
 
 
 if __name__ == '__main__':
