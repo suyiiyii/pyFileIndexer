@@ -1,10 +1,12 @@
 import hashlib
-from models import FileHash, FileMeta, session_factory
+from database import session_factory
+from models import FileHash, FileMeta
 import datetime
 import time
 from pathlib import Path
 from datetime import datetime
 import logging
+import os
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -66,6 +68,7 @@ def get_metadata(file: Path):
     meta = FileMeta(
         name=file.name,
         path=file.absolute().as_posix(),
+        machine=os.getenv('MACHINE_NAME', 'unknown'),
         created=datetime.fromtimestamp(stat.st_ctime),
         modified=datetime.fromtimestamp(stat.st_mtime),
         scanned=datetime.now(),
@@ -149,4 +152,5 @@ def scan_directory(directory: Path):
 
 
 if __name__ == '__main__':
-    scan_directory(Path(r'C:\Users\suyiiyii\Documents'))
+    scan_directory(Path(r'C:\Users\suyiiyii\Desktop'))
+    # scan_directory(Path(r'C:\Users\suyiiyii\Documents'))

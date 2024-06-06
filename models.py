@@ -1,12 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Column, Integer, String, DateTime
 from dataclasses import dataclass
-# 创建对象的基类
-Base = declarative_base()
-
-# 数据库连接字符串
-DB = 'sqlite:///file_hash.db'
+from database import Base, create_all
 
 
 @dataclass
@@ -21,6 +15,7 @@ class FileHash(Base):
     sha1 = Column(String, index=True)
     sha256 = Column(String, index=True)
 
+
 @dataclass
 class FileMeta(Base):
     __tablename__ = 'file_meta'
@@ -30,6 +25,8 @@ class FileMeta(Base):
     hash_id = Column(Integer, index=True)
     # 文件名
     name = Column(String)
+    # 机器名称
+    machine = Column(String)
     # 文件路径
     path = Column(String)
     # 创建日期
@@ -40,15 +37,5 @@ class FileMeta(Base):
     scanned = Column(DateTime)
 
 
-# 创建数据库连接
-engine = create_engine(DB)
-
 # 创建数据库表
-Base.metadata.create_all(engine)
-
-# 创建会话
-Session = sessionmaker(bind=engine)
-
-
-def session_factory():
-    return Session()
+create_all()
