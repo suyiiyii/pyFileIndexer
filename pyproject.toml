@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "pyfileindexer"
+version = "0.1.0"
+description = ""
+authors = ["suyiiyii <suyiiyii@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+SQLAlchemy = "^2.0.30"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
