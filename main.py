@@ -9,15 +9,20 @@ from datetime import datetime
 import logging
 import os
 from config import settings
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 
+stop_event = threading.Event()
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 file_hander = logging.FileHandler('scan.log', encoding='utf-8')
 stream_hander = logging.StreamHandler()
 
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(threadName)s - %(funcName)s - %(message)s'
+)
 file_hander.setFormatter(formatter)
 stream_hander.setFormatter(formatter)
 
@@ -83,8 +88,8 @@ def get_metadata(file: Path) -> FileMeta:
 def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
+    # 默认操作为添加
     meta.operation = 'ADD'
-
     # 如果文件的元数据和大小没有被修改，则不再扫描
     meta_in_db = database.get_file_by_path(file.absolute().as_posix())
     if meta_in_db:
@@ -96,7 +101,7 @@ def scan_file(file: Path):
                 and meta.modified == meta_in_db.modified
             ):
                 logger.info(f'Skipping: {file}')
-                # return
+                return
         meta.operation = 'MOD'
 
     # 获取文件哈希
@@ -106,33 +111,54 @@ def scan_file(file: Path):
     database.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
-def scan_directory(directory: Path):
-    '''扫描目录下的所有文件。'''
-    for path in directory.iterdir():
-        logger.info(f'Scanning: {path}')
+def scan_file_worker(filepaths: queue.Queue):
+    '''文件扫描工作线程。'''
+    logger.info('扫描工作线程启动。')
+    while not stop_event.is_set():
         try:
-            if path.is_dir():
-                if path.name in ignore_dirs:
-                    continue
-                if path.name.startswith('.'):
-                    logger.info(f'Skipping start with . : {path}')
-                    continue
-                if path.name.startswith('_'):
-                    logger.info(f'Skipping start with _ : {path}')
-                    continue
-                skip = False
-                for ignore_partial in ignore_partials_dirs:
-                    if ignore_partial in path.as_posix():
-                        skip = True
-                        continue
-                if skip:
-                    continue
-                scan_directory(path)
-            else:
-                scan_file(path)
-        except IOError as e:
+            file = filepaths.get()
+            if file is None:
+                break
+            logger.info(f'Scanning: {file}')
+            scan_file(file)
+        except Exception as e:
             logger.error(f'Error: {e}')
             logger.error(e)
+        finally:
+            filepaths.task_done()
+    logger.info('扫描工作线程结束。')
+
+
+def scan_directory(directory: Path, output_queue: queue.Queue):
+    '''遍历目录下的所有文件。'''
+    if not stop_event.is_set():
+        for path in directory.iterdir():
+            logger.debug(f':开始遍历 {path}')
+            try:
+                if path.is_dir():
+                    if path.name in ignore_dirs:
+                        continue
+                    if path.name.startswith('.'):
+                        logger.info(f'Skipping start with . : {path}')
+                        continue
+                    if path.name.startswith('_'):
+                        logger.info(f'Skipping start with _ : {path}')
+                        continue
+                    skip = False
+                    for ignore_partial in ignore_partials_dirs:
+                        if ignore_partial in path.as_posix():
+                            skip = True
+                            continue
+                    if skip:
+                        continue
+                    scan_directory(path, output_queue)
+                else:
+                    logger.debug(f':添加到扫描队列 {path}')
+                    output_queue.put(path)
+                    # scan_file(path)
+            except IOError as e:
+                logger.error(f'Error: {e}')
+                logger.error(e)
 
 
 def scan(path: str | Path):
@@ -145,9 +171,31 @@ def scan(path: str | Path):
     settings.set("SCANNED", datetime.now())
 
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
-    scan_directory(path)
+    filepaths = queue.Queue(10)
+
+    t_scan_dict = threading.Thread(target=scan_directory, args=(path, filepaths))
+
+    executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="scan_file_worker")
+    t_scan_files = []
+    for _ in range(5):
+        t_scan_files.append(executor.submit(scan_file_worker, filepaths))
+
+    t_scan_dict.start()
+    logger.info('目录扫描开始。')
+
+    t_scan_dict.join()
+    logger.info('目录扫描结束。')
+    for _ in range(5):
+        filepaths.put(None)
+
+    executor.shutdown(wait=True)
+    logger.info('文件扫描结束。')
 
 
 if __name__ == '__main__':
-    scan(r'C:\Users\suyiiyii\Desktop')
-    # scan_directory(Path(r'C:\Users\suyiiyii\Documents'))
+    try:
+        # scan(r'C:\Users\suyiiyii\Desktop')
+        scan(r'C:\Users\suyiiyii\Documents')
+    except KeyboardInterrupt:
+        stop_event.set()
+        logger.error('KeyboardInterrupt')

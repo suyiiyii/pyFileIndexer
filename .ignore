@@ -22,8 +22,9 @@ unpackage/dist
 
 # ntqq
 nt_qq/nt_data
-nt_qq\nt_db
-nt_qq\global
+nt_qq/nt_db
+nt_qq/global
+nt_qq/nt_temp
 Image/Group2
 
 # wechat
