@@ -73,3 +73,20 @@ def add_hash(hash: "FileHash") -> int:
         session.add(hash)
         session.commit()
         return hash.id
+
+
+def add(file: "FileMeta", hash: "FileHash" = None):
+    '''添加文件信息和哈希信息。'''
+    with session_factory() as session:
+        if hash is not None:
+            # 如果哈希信息已经存在，则直接使用已有的哈希信息
+            if hash_in_db := get_hash_by_hash(
+                {"md5": hash.md5, "sha1": hash.sha1, "sha256": hash.sha256}
+            ):
+                file.hash_id = hash_in_db.id
+            else:
+                session.add(hash)
+                session.commit()
+                file.hash_id = hash.id
+        session.add(file)
+        session.commit()

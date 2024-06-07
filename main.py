@@ -1,11 +1,6 @@
 import hashlib
-from database import (
-    add_file,
-    add_hash,
-    get_file_by_path,
-    get_hash_by_hash,
-    get_hash_by_id,
-)
+import queue
+import database
 from models import FileHash, FileMeta
 import datetime
 import time
@@ -44,11 +39,11 @@ with open(ignore_file) as f:
                 ignore_dirs.add(line)
 
 
-def human_size(bytes, units=['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
+def human_size(bytes, units=['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']) -> str:
     return str(bytes) + units[0] if bytes < 1024 else human_size(bytes >> 10, units[1:])
 
 
-def get_hashes(file_path: str | Path):
+def get_hashes(file_path: str | Path) -> dict[str, str]:
     '''Calculate MD5, SHA1, and SHA256 hashes of a file using hashlib.'''
     md5 = hashlib.md5()
     sha1 = hashlib.sha1()
@@ -70,7 +65,7 @@ def get_hashes(file_path: str | Path):
     }
 
 
-def get_metadata(file: Path):
+def get_metadata(file: Path) -> FileMeta:
     '''获取文件的元数据。'''
     stat = file.stat()
     assert settings.get("SCANNED") is not None
@@ -88,30 +83,27 @@ def get_metadata(file: Path):
 def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
+    meta.operation = 'ADD'
 
     # 如果文件的元数据和大小没有被修改，则不再扫描
-    meta_in_db = get_file_by_path(file.absolute().as_posix())
+    meta_in_db = database.get_file_by_path(file.absolute().as_posix())
     if meta_in_db:
-        if file.stat().st_size == get_hash_by_id(meta_in_db.hash_id).size:
-            meta.hash_id = meta_in_db.hash_id
-            meta.scanned = meta_in_db.scanned
-            if meta == meta_in_db:
+        # 如果文件大小没有变化
+        if file.stat().st_size == database.get_hash_by_id(meta_in_db.hash_id).size:
+            # 如果文件的创建时间和修改时间没有变化
+            if (
+                meta.created == meta_in_db.created
+                and meta.modified == meta_in_db.modified
+            ):
                 logger.info(f'Skipping: {file}')
-                return
+                # return
+        meta.operation = 'MOD'
 
     # 获取文件哈希
     hashes = get_hashes(file)
 
-    # 如果哈希信息已经存在，则直接使用
-    hash_info = get_hash_by_hash(hashes)
-    # 如果哈希信息不存在，则创建
-    if hash_info is not None:
-        meta.hash_id = hash_info.id
-    else:
-        hash_info = FileHash(size=file.stat().st_size, **hashes)
-        meta.hash_id = add_hash(hash_info)
-
-    add_file(meta)
+    # 写入数据库
+    database.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
 def scan_directory(directory: Path):
@@ -151,6 +143,8 @@ def scan(path: str | Path):
     if isinstance(path, str):
         path = Path(path)
     settings.set("SCANNED", datetime.now())
+
+    # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
     scan_directory(path)
 
 
