@@ -171,13 +171,13 @@ def scan(path: str | Path):
     settings.set("SCANNED", datetime.now())
 
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
-    filepaths = queue.Queue(10)
+    filepaths = queue.Queue(os.cpu_count() * 2)
 
     t_scan_dict = threading.Thread(target=scan_directory, args=(path, filepaths))
 
-    executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="scan_file_worker")
+    executor = ThreadPoolExecutor(thread_name_prefix="scan_file_worker")
     t_scan_files = []
-    for _ in range(5):
+    for _ in range(os.cpu_count()):
         t_scan_files.append(executor.submit(scan_file_worker, filepaths))
 
     t_scan_dict.start()
@@ -185,7 +185,7 @@ def scan(path: str | Path):
 
     t_scan_dict.join()
     logger.info('目录扫描结束。')
-    for _ in range(5):
+    for _ in range(os.cpu_count()):
         filepaths.put(None)
 
     executor.shutdown(wait=True)
