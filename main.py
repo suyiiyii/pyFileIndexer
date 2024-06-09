@@ -11,6 +11,7 @@ import os
 from config import settings
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import argparse
 
 
 stop_event = threading.Event()
@@ -77,7 +78,7 @@ def get_metadata(file: Path) -> FileMeta:
     meta = FileMeta(
         name=file.name,
         path=file.absolute().as_posix(),
-        machine=settings.MACHINE_NAME,
+        machine=settings.get("MACHINE_NAME", "Unknown"),
         created=datetime.fromtimestamp(stat.st_ctime),
         modified=datetime.fromtimestamp(stat.st_mtime),
         scanned=settings.get("SCANNED"),
@@ -132,6 +133,7 @@ def scan_file_worker(filepaths: queue.Queue):
 def scan_directory(directory: Path, output_queue: queue.Queue):
     '''遍历目录下的所有文件。'''
     if not stop_event.is_set():
+        logger.debug(f'队列大小：{output_queue.qsize()}')
         for path in directory.iterdir():
             logger.debug(f':开始遍历 {path}')
             try:
@@ -193,9 +195,17 @@ def scan(path: str | Path):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='pyFileIndexer')
+    parser.add_argument('path', type=str, help='The path to scan.')
+    parser.add_argument("--machine_name", type=str, help="The machine name.")
+    args = parser.parse_args()
+    
+    # 传入的机器名称覆盖配置文件中的机器名称
+    if args.machine_name:
+        settings.set("MACHINE_NAME", args.machine_name)
+
     try:
-        # scan(r'C:\Users\suyiiyii\Desktop')
-        scan(r'C:\Users\suyiiyii\Documents')
+        scan(args.path)
     except KeyboardInterrupt:
         stop_event.set()
         logger.error('KeyboardInterrupt')
