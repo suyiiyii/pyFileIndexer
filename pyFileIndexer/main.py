@@ -33,16 +33,17 @@ logger.addHandler(stream_hander)
 ignore_file = '.ignore'
 ignore_dirs = set()
 ignore_partials_dirs = set()
-with open(ignore_file) as f:
-    for line in f:
-        line = line.strip()
-        if line:
-            if line.startswith('#'):
-                continue
-            if '/' in line:
-                ignore_partials_dirs.add(line)
-            else:
-                ignore_dirs.add(line)
+if os.path.exists(ignore_file):
+    with open(ignore_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                if line.startswith('#'):
+                    continue
+                if '/' in line:
+                    ignore_partials_dirs.add(line)
+                else:
+                    ignore_dirs.add(line)
 
 
 def human_size(bytes, units=['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']) -> str:
@@ -198,11 +199,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pyFileIndexer')
     parser.add_argument('path', type=str, help='The path to scan.')
     parser.add_argument("--machine_name", type=str, help="The machine name.")
+    parser.add_argument(
+        "--db_path", type=str, help="The database path.", default='indexer.db'
+    )
     args = parser.parse_args()
-    
+
     # 传入的机器名称覆盖配置文件中的机器名称
     if args.machine_name:
         settings.set("MACHINE_NAME", args.machine_name)
+
+    database.init("sqlite:///" + args.db_path)
 
     try:
         scan(args.path)

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from dataclasses import dataclass
-from database import Base, create_all
+from database import Base
 
 
 @dataclass
@@ -37,7 +37,3 @@ class FileMeta(Base):
     scanned = Column(DateTime)
     # 操作
     operation = Column(String)
-
-
-# 创建数据库表
-create_all()

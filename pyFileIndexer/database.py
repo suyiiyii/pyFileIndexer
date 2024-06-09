@@ -6,26 +6,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from models import FileMeta, FileHash
 
-# 数据库连接字符串
-DB = 'sqlite:///file_hash.db'
-
-# 创建数据库连接
 Base = declarative_base()
-engine = create_engine(DB)
 
 
-# 创建会话
-Session = sessionmaker(bind=engine)
+engine = None
+Session = None
+
+
+def init(db_url: str):
+    '''初始化数据库连接。'''
+    global engine, Session
+    engine = create_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(engine)
 
 
 def session_factory():
     return Session()
-
-
-def create_all():
-    '''创建所有表。'''
-    Base.metadata.create_all(engine)
-
 
 def get_file_by_name(name: str) -> "FileMeta":
     '''根据文件名查询文件信息。'''
