@@ -13,22 +13,23 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import argparse
 
-
 stop_event = threading.Event()
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
-
-file_hander = logging.FileHandler('scan.log', encoding='utf-8')
 stream_hander = logging.StreamHandler()
 
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(threadName)s - %(funcName)s - %(message)s'
 )
-file_hander.setFormatter(formatter)
 stream_hander.setFormatter(formatter)
-
-logger.addHandler(file_hander)
 logger.addHandler(stream_hander)
+
+
+def init_file_logger(log_path: str):
+    file_hander = logging.FileHandler(log_path, encoding='utf-8')
+    file_hander.setFormatter(formatter)
+    logger.addHandler(file_hander)
+
 
 ignore_file = '.ignore'
 ignore_dirs = set()
@@ -202,6 +203,9 @@ if __name__ == '__main__':
     parser.add_argument(
         "--db_path", type=str, help="The database path.", default='indexer.db'
     )
+    parser.add_argument(
+        "--log_path", type=str, help="The log path.", default='indexer.log'
+    )
     args = parser.parse_args()
 
     # 传入的机器名称覆盖配置文件中的机器名称
@@ -209,6 +213,7 @@ if __name__ == '__main__':
         settings.set("MACHINE_NAME", args.machine_name)
 
     database.init("sqlite:///" + args.db_path)
+    init_file_logger(args.log_path)
 
     try:
         scan(args.path)
