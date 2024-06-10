@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from typing import TYPE_CHECKING
+import threading
 
 if TYPE_CHECKING:
     from models import FileMeta, FileHash
@@ -11,8 +12,10 @@ Base = declarative_base()
 
 engine = None
 Session = None
+SessionLock = threading.Lock()
 
 
+# TODO: 线程安全问题，或者异步 io 改造，一步到位解决问题
 def init(db_url: str):
     '''初始化数据库连接。'''
     global engine, Session
@@ -22,7 +25,9 @@ def init(db_url: str):
 
 
 def session_factory():
-    return Session()
+    with SessionLock:
+        return Session()
+
 
 def get_file_by_name(name: str) -> "FileMeta":
     '''根据文件名查询文件信息。'''
