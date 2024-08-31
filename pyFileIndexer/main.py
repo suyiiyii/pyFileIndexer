@@ -88,30 +88,33 @@ def get_metadata(file: Path) -> FileMeta:
     return meta
 
 
+lock = threading.Lock()
 def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
     # 默认操作为添加
     meta.operation = 'ADD'
     # 如果文件的元数据和大小没有被修改，则不再扫描
-    meta_in_db = database.get_file_by_path(file.absolute().as_posix())
-    if meta_in_db:
-        # 如果文件大小没有变化
-        if file.stat().st_size == database.get_hash_by_id(meta_in_db.hash_id).size:
-            # 如果文件的创建时间和修改时间没有变化
-            if (
-                meta.created == meta_in_db.created
-                and meta.modified == meta_in_db.modified
-            ):
-                logger.info(f'Skipping: {file}')
-                return
-        meta.operation = 'MOD'
+    with lock:
+        meta_in_db = database.get_file_by_path(file.absolute().as_posix())
+        if meta_in_db:
+            # 如果文件大小没有变化
+            if file.stat().st_size == database.get_hash_by_id(meta_in_db.hash_id).size:
+                # 如果文件的创建时间和修改时间没有变化
+                if (
+                    meta.created == meta_in_db.created
+                    and meta.modified == meta_in_db.modified
+                ):
+                    logger.info(f'Skipping: {file}')
+                    return
+            meta.operation = 'MOD'
 
     # 获取文件哈希
     hashes = get_hashes(file)
 
     # 写入数据库
-    database.add(meta, FileHash(**hashes, size=file.stat().st_size))
+    with lock:
+        database.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
 def scan_file_worker(filepaths: queue.Queue):

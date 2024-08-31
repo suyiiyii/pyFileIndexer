@@ -11,6 +11,12 @@
 - [ ] 支持不同数据库的合并
 - [ ] webui
 
+## 使用
+
+```shell
+sudo docker run --rm -v $(pwd):$(pwd) registry.cn-shenzhen.aliyuncs.com/suyiiyii/py:5 $(pwd) --db_path $(pwd)/indexer.db --log_path $(pwd)/indexer.log
+```
+
 ## 扫描步骤
 
 ```mermaid
@@ -23,3 +29,9 @@ graph TD
   C --> D[将结果写回DB]
 
 ```
+
+## TODO
+
+添加文件夹表
+网页搜索面板
+两边数据库文件匹配重复文件
