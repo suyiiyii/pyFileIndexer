@@ -14,7 +14,7 @@ go/pkg
 # java
 target/classes
 
-# front
+# node
 node_modules
 uni_modules
 .next

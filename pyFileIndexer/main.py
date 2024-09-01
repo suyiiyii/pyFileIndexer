@@ -1,17 +1,19 @@
-import hashlib
-import queue
-import database
-from models import FileHash, FileMeta
+import argparse
 import datetime
-import time
-from pathlib import Path
-from datetime import datetime
+import hashlib
 import logging
 import os
-from config import settings
+import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
-import argparse
+from datetime import datetime
+from pathlib import Path
+
+from tqdm import tqdm
+
+import database
+from config import settings
+from models import FileHash, FileMeta
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -89,6 +91,8 @@ def get_metadata(file: Path) -> FileMeta:
 
 
 lock = threading.Lock()
+
+
 def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
@@ -102,8 +106,8 @@ def scan_file(file: Path):
             if file.stat().st_size == database.get_hash_by_id(meta_in_db.hash_id).size:
                 # 如果文件的创建时间和修改时间没有变化
                 if (
-                    meta.created == meta_in_db.created
-                    and meta.modified == meta_in_db.modified
+                        meta.created == meta_in_db.created
+                        and meta.modified == meta_in_db.modified
                 ):
                     logger.info(f'Skipping: {file}')
                     return
@@ -117,7 +121,7 @@ def scan_file(file: Path):
         database.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
-def scan_file_worker(filepaths: queue.Queue):
+def scan_file_worker(filepaths: queue.Queue, pbar: tqdm = None):
     '''文件扫描工作线程。'''
     logger.info('扫描工作线程启动。')
     while not stop_event.is_set():
@@ -127,6 +131,8 @@ def scan_file_worker(filepaths: queue.Queue):
                 break
             logger.info(f'Scanning: {file}')
             scan_file(file)
+            if pbar:
+                pbar.update(1)
         except Exception as e:
             logger.error(f'Error: {e}')
             logger.error(e)
@@ -178,24 +184,27 @@ def scan(path: str | Path):
     settings.set("SCANNED", datetime.now())
 
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
-    filepaths = queue.Queue(os.cpu_count() * 2)
+    filepaths = queue.Queue(-1)
 
-    t_scan_dict = threading.Thread(target=scan_directory, args=(path, filepaths))
-
-    executor = ThreadPoolExecutor(thread_name_prefix="scan_file_worker")
-    t_scan_files = []
-    for _ in range(os.cpu_count()):
-        t_scan_files.append(executor.submit(scan_file_worker, filepaths))
-
-    t_scan_dict.start()
-    logger.info('目录扫描开始。')
-
-    t_scan_dict.join()
-    logger.info('目录扫描结束。')
+    # t_scan_dict = threading.Thread(target=scan_directory, args=(path, filepaths))
+    #
+    # t_scan_dict.start()
+    # logger.info('目录扫描开始。')
+    #
+    # t_scan_dict.join()
+    # logger.info('目录扫描结束。')
+    scan_directory(path, filepaths)
     for _ in range(os.cpu_count()):
         filepaths.put(None)
 
-    executor.shutdown(wait=True)
+    executor = ThreadPoolExecutor(thread_name_prefix="scan_file_worker")
+    t_scan_files = []
+    with tqdm(total=filepaths.qsize()) as pbar:
+        # for _ in range(os.cpu_count()):
+        #     t_scan_files.append(executor.submit(scan_file_worker, filepaths, pbar=pbar))
+        scan_file_worker(filepaths, pbar=pbar)
+
+    # executor.shutdown(wait=True)
     logger.info('文件扫描结束。')
 
 
@@ -215,7 +224,10 @@ if __name__ == '__main__':
     if args.machine_name:
         settings.set("MACHINE_NAME", args.machine_name)
 
-    database.init("sqlite:///" + args.db_path)
+    database.init_memory_db()
+    # database.init("sqlite:///:memory:")
+    # database.init("sqlite:///test.db")
+    # database.create_tables()
     init_file_logger(args.log_path)
 
     try:
@@ -223,3 +235,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         stop_event.set()
         logger.error('KeyboardInterrupt')
+    finally:
+        database.save_memory_db_to_disk('sqlite:///' + args.db_path)
+        logger.info('数据库落盘完成。')

@@ -1,27 +1,57 @@
+import threading
+from typing import TYPE_CHECKING
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import TYPE_CHECKING
-import threading
 
 if TYPE_CHECKING:
     from models import FileMeta, FileHash
 
 Base = declarative_base()
 
-
 engine = None
 Session = None
 SessionLock = threading.Lock()
 
 
-# TODO: 线程安全问题，或者异步 io 改造，一步到位解决问题
 def init(db_url: str):
     '''初始化数据库连接。'''
     global engine, Session
     engine = create_engine(db_url)
     Session = sessionmaker(bind=engine)
     Base.metadata.create_all(engine)
+
+
+def init_memory_db():
+    '''初始化内存数据库。'''
+    # TODO: 目前会覆盖上一次的数据库
+    global engine, Session
+    engine = create_engine('sqlite:///:memory:')
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(engine)
+
+
+def save_memory_db_to_disk(disk_db_url: str):
+    '''将内存数据库保存到磁盘。'''
+    if engine is None:
+        raise RuntimeError("Memory database is not initialized.")
+    session = Session()
+    disk_engine = create_engine(disk_db_url)
+    Base.metadata.create_all(disk_engine)
+    Disksession = sessionmaker(bind=disk_engine)
+    with Disksession() as disk_session:
+        from models import FileMeta, FileHash
+        for file in session.query(FileMeta).all():
+            file_dict = file.__dict__
+            file_dict.pop('_sa_instance_state')
+            disk_session.add(FileMeta(**file_dict))
+        for hash in session.query(FileHash).all():
+            hash_dict = hash.__dict__
+            hash_dict.pop('_sa_instance_state')
+            disk_session.add(FileHash(**hash_dict))
+        disk_session.commit()
+
 
 
 def session_factory():
@@ -83,7 +113,7 @@ def add(file: "FileMeta", hash: "FileHash" = None):
         if hash is not None:
             # 如果哈希信息已经存在，则直接使用已有的哈希信息
             if hash_in_db := get_hash_by_hash(
-                {"md5": hash.md5, "sha1": hash.sha1, "sha256": hash.sha256}
+                    {"md5": hash.md5, "sha1": hash.sha1, "sha256": hash.sha256}
             ):
                 file.hash_id = hash_in_db.id
             else:
