@@ -1,17 +1,14 @@
-[tool.poetry]
+[project]
 name = "pyfileindexer"
 version = "0.1.0"
 description = ""
-authors = ["suyiiyii <suyiiyii@gmail.com>"]
+authors = [
+    { name = "suyiiyii", email = "suyiiyii@gmail.com" }
+]
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-SQLAlchemy = "^2.0.30"
-dynaconf = "^3.2.5"
-tqdm = "^4.66.5"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+dependencies = [
+    "SQLAlchemy>=2.0.30,<3.0.0",
+    "dynaconf>=3.2.5,<4.0.0",
+    "tqdm>=4.66.5,<5.0.0"
+]
+requires-python = ">=3.11"
