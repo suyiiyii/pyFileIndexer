@@ -5,9 +5,8 @@ import logging
 import os
 import queue
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional, Union
 
 from tqdm import tqdm
 
@@ -34,8 +33,8 @@ def init_file_logger(log_path: str):
 
 
 ignore_file = '.ignore'
-ignore_dirs = set()
-ignore_partials_dirs = set()
+ignore_dirs: set[str] = set()
+ignore_partials_dirs: set[str] = set()
 if os.path.exists(ignore_file):
     with open(ignore_file) as f:
         for line in f:
@@ -49,11 +48,13 @@ if os.path.exists(ignore_file):
                     ignore_dirs.add(line)
 
 
-def human_size(bytes, units=['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']) -> str:
-    return str(bytes) + units[0] if bytes < 1024 else human_size(bytes >> 10, units[1:])
+def human_size(bytes: int, units: list[str] = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']) -> str:
+    if bytes < 1024:
+        return str(bytes) + units[0]
+    return human_size(bytes >> 10, units[1:])
 
 
-def get_hashes(file_path: str | Path) -> dict[str, str]:
+def get_hashes(file_path: Union[str, Path]) -> dict[str, str]:
     '''Calculate MD5, SHA1, and SHA256 hashes of a file using hashlib.'''
     md5 = hashlib.md5()
     sha1 = hashlib.sha1()
@@ -78,14 +79,18 @@ def get_hashes(file_path: str | Path) -> dict[str, str]:
 def get_metadata(file: Path) -> FileMeta:
     '''获取文件的元数据。'''
     stat = file.stat()
-    assert settings.get("SCANNED") is not None
+    # Dynaconf settings: use attribute access, not .get()
+    scanned = getattr(settings, "SCANNED", None)
+    if scanned is None:
+        raise ValueError("SCANNED not set in settings!")
+    machine = getattr(settings, "MACHINE_NAME", "Unknown")
     meta = FileMeta(
         name=file.name,
-        path=file.absolute().as_posix(),
-        machine=settings.get("MACHINE_NAME", "Unknown"),
-        created=datetime.fromtimestamp(stat.st_ctime),
-        modified=datetime.fromtimestamp(stat.st_mtime),
-        scanned=settings.get("SCANNED"),
+        path=str(file.absolute()),
+        machine=machine,
+        created=datetime.datetime.fromtimestamp(stat.st_ctime),
+        modified=datetime.datetime.fromtimestamp(stat.st_mtime),
+        scanned=scanned,
     )
     return meta
 
@@ -97,37 +102,36 @@ def scan_file(file: Path):
     '''扫描单个文件，将文件信息和哈希信息保存到数据库。'''
     meta = get_metadata(file)
     # 默认操作为添加
-    meta.operation = 'ADD'
+    meta.operation = 'ADD'  # type: ignore[attr-defined]
     # 如果文件的元数据和大小没有被修改，则不再扫描
     with lock:
         meta_in_db = database.get_file_by_path(file.absolute().as_posix())
         if meta_in_db:
             # 如果文件大小没有变化
-            if file.stat().st_size == database.get_hash_by_id(meta_in_db.hash_id).size:
-                # 如果文件的创建时间和修改时间没有变化
-                if (
-                        meta.created == meta_in_db.created
-                        and meta.modified == meta_in_db.modified
-                ):
-                    logger.info(f'Skipping: {file}')
-                    return
-            meta.operation = 'MOD'
-
+            hash_id = getattr(meta_in_db, 'hash_id', None)
+            if hash_id is not None:
+                hash_in_db = database.get_hash_by_id(hash_id)
+                if file.stat().st_size == getattr(hash_in_db, 'size', None):
+                    # 如果文件的创建时间和修改时间没有变化
+                    if (getattr(meta, 'created', None) == getattr(meta_in_db, 'created', None)
+                            and getattr(meta, 'modified', None) == getattr(meta_in_db, 'modified', None)):
+                        logger.info(f'Skipping: {file}')
+                        return
+            meta.operation = 'MOD'  # type: ignore[attr-defined]
     # 获取文件哈希
     hashes = get_hashes(file)
-
     # 写入数据库
     with lock:
         database.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
-def scan_file_worker(filepaths: queue.Queue, pbar: tqdm = None):
+def scan_file_worker(filepaths: 'queue.Queue[Path]', pbar: Optional['tqdm[Any]'] = None):
     '''文件扫描工作线程。'''
     logger.info('扫描工作线程启动。')
     while not stop_event.is_set():
         try:
             file = filepaths.get()
-            if file is None:
+            if file == Path():  # Dummy Path signals end
                 break
             logger.info(f'Scanning: {file}')
             scan_file(file)
@@ -141,7 +145,7 @@ def scan_file_worker(filepaths: queue.Queue, pbar: tqdm = None):
     logger.info('扫描工作线程结束。')
 
 
-def scan_directory(directory: Path, output_queue: queue.Queue):
+def scan_directory(directory: Path, output_queue: 'queue.Queue[Path]'):
     '''遍历目录下的所有文件。'''
     if not stop_event.is_set():
         logger.debug(f'队列大小：{output_queue.qsize()}')
@@ -168,43 +172,27 @@ def scan_directory(directory: Path, output_queue: queue.Queue):
                 else:
                     logger.debug(f':添加到扫描队列 {path}')
                     output_queue.put(path)
-                    # scan_file(path)
             except IOError as e:
                 logger.error(f'Error: {e}')
                 logger.error(e)
 
 
-def scan(path: str | Path):
+def scan(path: Union[str, Path]):
     '''扫描指定目录。'''
     if not os.path.exists(path):
         logger.error(f'Path not exists: {path}')
         return
     if isinstance(path, str):
         path = Path(path)
-    settings.set("SCANNED", datetime.now())
-
+    # Dynaconf: set attribute
+    setattr(settings, "SCANNED", datetime.datetime.now())
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
-    filepaths = queue.Queue(-1)
-
-    # t_scan_dict = threading.Thread(target=scan_directory, args=(path, filepaths))
-    #
-    # t_scan_dict.start()
-    # logger.info('目录扫描开始。')
-    #
-    # t_scan_dict.join()
-    # logger.info('目录扫描结束。')
+    filepaths: 'queue.Queue[Path]' = queue.Queue(-1)
     scan_directory(path, filepaths)
-    for _ in range(os.cpu_count()):
-        filepaths.put(None)
-
-    executor = ThreadPoolExecutor(thread_name_prefix="scan_file_worker")
-    t_scan_files = []
+    for _ in range(os.cpu_count() or 1):
+        filepaths.put(Path())  # Dummy Path to signal end
     with tqdm(total=filepaths.qsize()) as pbar:
-        # for _ in range(os.cpu_count()):
-        #     t_scan_files.append(executor.submit(scan_file_worker, filepaths, pbar=pbar))
         scan_file_worker(filepaths, pbar=pbar)
-
-    # executor.shutdown(wait=True)
     logger.info('文件扫描结束。')
 
 
@@ -222,7 +210,7 @@ if __name__ == '__main__':
 
     # 传入的机器名称覆盖配置文件中的机器名称
     if args.machine_name:
-        settings.set("MACHINE_NAME", args.machine_name)
+        setattr(settings, "MACHINE_NAME", args.machine_name)
 
     database.init_memory_db()
     # database.init("sqlite:///:memory:")
@@ -236,5 +224,5 @@ if __name__ == '__main__':
         stop_event.set()
         logger.error('KeyboardInterrupt')
     finally:
-        database.save_memory_db_to_disk('sqlite:///' + args.db_path)
+        database.save_memory_db_to_disk('sqlite:///' + str(args.db_path))
         logger.info('数据库落盘完成。')
