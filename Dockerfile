@@ -11,6 +11,6 @@ RUN uv sync
 COPY ./pyFileIndexer /app
 
 # 启动
-ENTRYPOINT ["poetry", "run", "python", "main.py"]
+ENTRYPOINT ["uv", "run", "python", "main.py"]
 CMD ["--help"]
 
