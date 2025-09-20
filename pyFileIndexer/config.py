@@ -8,3 +8,18 @@ settings = Dynaconf(
 
 # `envvar_prefix` = export envvars with `export DYNACONF_FOO=bar`.
 # `settings_files` = Load these files in the order.
+
+
+def validate_settings():
+    """验证关键配置项，提供有用的错误信息。"""
+    warnings = []
+
+    machine_name = getattr(settings, "MACHINE_NAME", None)
+    if not machine_name:
+        warnings.append("MACHINE_NAME 未设置，将使用 'localhost'")
+
+    scanned = getattr(settings, "SCANNED", None)
+    if not scanned:
+        warnings.append("SCANNED 未设置，将使用当前时间")
+
+    return warnings
