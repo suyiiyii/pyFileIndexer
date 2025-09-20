@@ -9,6 +9,44 @@ readme = "README.md"
 dependencies = [
     "SQLAlchemy>=2.0.30,<3.0.0",
     "dynaconf>=3.2.5,<4.0.0",
-    "tqdm>=4.66.5,<5.0.0"
+    "pytest>=8.4.2",
+    "tqdm>=4.66.5,<5.0.0",
 ]
 requires-python = ">=3.11"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.12.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-asyncio>=0.23.0",
+    "freezegun>=1.4.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests",
+    "database: Tests that require database",
+    "filesystem: Tests that require filesystem access"
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning"
+]
+
+[dependency-groups]
+test = [
+    "freezegun>=1.5.5",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.8.0",
+]

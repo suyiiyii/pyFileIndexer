@@ -78,13 +78,20 @@ def get_hashes(file_path: Union[str, Path]) -> dict[str, str]:
 
 
 def get_metadata(file: Path) -> FileMeta:
-    """获取文件的元数据。"""
+    """获取文件的元数据，提供合理默认值。"""
     stat = file.stat()
-    # Dynaconf settings: use attribute access, not .get()
-    scanned = getattr(settings, "SCANNED", None)
-    if scanned is None:
-        raise ValueError("SCANNED not set in settings!")
-    machine = getattr(settings, "MACHINE_NAME", "Unknown")
+
+    # 提供合理的默认值，而不是严格要求配置
+    scanned = getattr(settings, "SCANNED", datetime.datetime.now())
+    machine = getattr(settings, "MACHINE_NAME", "localhost")
+
+    # 如果配置的是字符串时间，尝试解析
+    if isinstance(scanned, str):
+        try:
+            scanned = datetime.datetime.fromisoformat(scanned)
+        except ValueError:
+            scanned = datetime.datetime.now()
+
     meta = FileMeta(
         name=file.name,
         path=str(file.absolute()),
@@ -104,7 +111,8 @@ def scan_file(file: Path):
     meta = get_metadata(file)
     # 默认操作为添加
     meta.operation = "ADD"  # type: ignore[attr-defined]
-    # 如果文件的元数据和大小没有被修改，则不再扫描
+
+    # 检查文件是否已存在
     with lock:
         meta_in_db = db_manager.get_file_by_path(file.absolute().as_posix())
         if meta_in_db:
@@ -121,12 +129,17 @@ def scan_file(file: Path):
                     ):
                         logger.info(f"Skipping: {file}")
                         return
+            # 文件有变化，标记为修改
             meta.operation = "MOD"  # type: ignore[attr-defined]
+
     # 获取文件哈希
     hashes = get_hashes(file)
-    # 写入数据库
+    # 写入数据库 - 如果是修改操作，更新现有记录
     with lock:
-        db_manager.add(meta, FileHash(**hashes, size=file.stat().st_size))
+        if meta.operation == "MOD":
+            db_manager.update_file(meta, FileHash(**hashes, size=file.stat().st_size))
+        else:
+            db_manager.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
 def scan_file_worker(
