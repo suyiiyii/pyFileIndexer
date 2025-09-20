@@ -8,8 +8,8 @@ import threading
 from pathlib import Path
 from typing import Any, Optional, Union
 
-import database
 from config import settings
+from database import db_manager
 from models import FileHash, FileMeta
 from tqdm import tqdm
 
@@ -106,12 +106,12 @@ def scan_file(file: Path):
     meta.operation = "ADD"  # type: ignore[attr-defined]
     # 如果文件的元数据和大小没有被修改，则不再扫描
     with lock:
-        meta_in_db = database.get_file_by_path(file.absolute().as_posix())
+        meta_in_db = db_manager.get_file_by_path(file.absolute().as_posix())
         if meta_in_db:
             # 如果文件大小没有变化
             hash_id = getattr(meta_in_db, "hash_id", None)
             if hash_id is not None:
-                hash_in_db = database.get_hash_by_id(hash_id)
+                hash_in_db = db_manager.get_hash_by_id(hash_id)
                 if file.stat().st_size == getattr(hash_in_db, "size", None):
                     # 如果文件的创建时间和修改时间没有变化
                     if getattr(meta, "created", None) == getattr(
@@ -126,7 +126,7 @@ def scan_file(file: Path):
     hashes = get_hashes(file)
     # 写入数据库
     with lock:
-        database.add(meta, FileHash(**hashes, size=file.stat().st_size))
+        db_manager.add(meta, FileHash(**hashes, size=file.stat().st_size))
 
 
 def scan_file_worker(
@@ -218,9 +218,9 @@ if __name__ == "__main__":
     if args.machine_name:
         setattr(settings, "MACHINE_NAME", args.machine_name)
 
-    database.init("sqlite:///" + str(args.db_path))
-    # database.init("sqlite:///:memory:")
-    # database.init("sqlite:///test.db")
+    db_manager.init("sqlite:///" + str(args.db_path))
+    # db_manager.init("sqlite:///:memory:")
+    # db_manager.init("sqlite:///test.db")
     # database.create_tables()
     init_file_logger(args.log_path)
 
