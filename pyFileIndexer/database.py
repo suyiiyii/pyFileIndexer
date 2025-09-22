@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 if TYPE_CHECKING:
     from models import FileHash, FileMeta
@@ -45,10 +44,9 @@ class DatabaseManager:
     def init(self, db_url: str):
         """初始化数据库连接，支持多线程安全。"""
         if db_url.startswith("sqlite"):
-            # SQLite 特殊配置，支持多线程
+            # SQLite 配置，支持多线程，优化磁盘数据库性能
             self.engine = create_engine(
                 db_url,
-                poolclass=StaticPool,
                 connect_args={
                     'check_same_thread': False,  # 允许跨线程使用
                     'timeout': 20  # 设置超时
@@ -109,6 +107,27 @@ class DatabaseManager:
                 session.refresh(result)  # 刷新对象状态
                 session.expunge(result)
             return result
+        finally:
+            session.close()
+
+    def get_file_with_hash_by_path(self, path: str) -> Optional[tuple["FileMeta", Optional["FileHash"]]]:
+        """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
+        from models import FileMeta, FileHash
+
+        session = self.session_factory()
+        try:
+            result = session.query(FileMeta, FileHash).outerjoin(
+                FileHash, FileMeta.hash_id == FileHash.id
+            ).filter(FileMeta.path == path).first()
+
+            if result:
+                file_meta, file_hash = result
+                if file_meta:
+                    session.expunge(file_meta)
+                if file_hash:
+                    session.expunge(file_hash)
+                return (file_meta, file_hash)
+            return None
         finally:
             session.close()
 

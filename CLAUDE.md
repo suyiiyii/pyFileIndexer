@@ -30,13 +30,12 @@ docker run --rm -v $(pwd):$(pwd) pyfileindexer $(pwd) --db_path $(pwd)/indexer.d
 1. **main.py**: Entry point that orchestrates the scanning process
    - Uses producer-consumer pattern with threading
    - Single-threaded directory traversal followed by file hash calculation
-   - Memory database during scanning, persisted to disk on completion
+   - Direct disk database operations during scanning
 
 2. **database.py**: Database abstraction layer
    - SQLAlchemy ORM with SQLite backend
-   - In-memory database during operation for performance
+   - Direct disk database operations for data persistence
    - Thread-safe with SessionLock for concurrent access
-   - Disk persistence via `save_memory_db_to_disk()`
 
 3. **models.py**: Data models
    - `FileHash`: Stores file size and hash values (MD5, SHA1, SHA256)
@@ -54,8 +53,7 @@ docker run --rm -v $(pwd):$(pwd) pyfileindexer $(pwd) --db_path $(pwd)/indexer.d
    - Checks if file exists in DB with same size/timestamps
    - Skips unchanged files for efficiency
    - Calculates hashes for new/modified files
-   - Updates database with ADD/MOD operations
-3. Memory database persists to disk after all scanning completes
+   - Updates disk database directly with ADD/MOD operations
 
 ### File Filtering
 

@@ -77,9 +77,10 @@ def get_hashes(file_path: Union[str, Path]) -> dict[str, str]:
     }
 
 
-def get_metadata(file: Path) -> FileMeta:
+def get_metadata(file: Path, stat_result: os.stat_result = None) -> FileMeta:
     """获取文件的元数据，提供合理默认值。"""
-    stat = file.stat()
+    if stat_result is None:
+        stat_result = file.stat()
 
     # 提供合理的默认值，而不是严格要求配置
     scanned = getattr(settings, "SCANNED", datetime.datetime.now())
@@ -96,8 +97,8 @@ def get_metadata(file: Path) -> FileMeta:
         name=file.name,
         path=str(file.absolute()),
         machine=machine,
-        created=datetime.datetime.fromtimestamp(stat.st_ctime),
-        modified=datetime.datetime.fromtimestamp(stat.st_mtime),
+        created=datetime.datetime.fromtimestamp(stat_result.st_ctime),
+        modified=datetime.datetime.fromtimestamp(stat_result.st_mtime),
         scanned=scanned,
     )
     return meta
@@ -108,38 +109,36 @@ lock = threading.Lock()
 
 def scan_file(file: Path):
     """扫描单个文件，将文件信息和哈希信息保存到数据库。"""
-    meta = get_metadata(file)
+    # 优化：只调用一次 file.stat()
+    file_stat = file.stat()
+    meta = get_metadata(file, file_stat)
     # 默认操作为添加
     meta.operation = "ADD"  # type: ignore[attr-defined]
 
-    # 检查文件是否已存在
-    with lock:
-        meta_in_db = db_manager.get_file_by_path(file.absolute().as_posix())
-        if meta_in_db:
-            # 如果文件大小没有变化
-            hash_id = getattr(meta_in_db, "hash_id", None)
-            if hash_id is not None:
-                hash_in_db = db_manager.get_hash_by_id(hash_id)
-                if file.stat().st_size == getattr(hash_in_db, "size", None):
-                    # 如果文件的创建时间和修改时间没有变化
-                    if getattr(meta, "created", None) == getattr(
-                        meta_in_db, "created", None
-                    ) and getattr(meta, "modified", None) == getattr(
-                        meta_in_db, "modified", None
-                    ):
-                        logger.info(f"Skipping: {file}")
-                        return
-            # 文件有变化，标记为修改
-            meta.operation = "MOD"  # type: ignore[attr-defined]
+    # 检查文件是否已存在（优化：一次查询获取文件和哈希信息）
+    result = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
+    if result:
+        meta_in_db, hash_in_db = result
+        if hash_in_db and file_stat.st_size == getattr(hash_in_db, "size", None):
+            # 如果文件的创建时间和修改时间没有变化
+            if getattr(meta, "created", None) == getattr(
+                meta_in_db, "created", None
+            ) and getattr(meta, "modified", None) == getattr(
+                meta_in_db, "modified", None
+            ):
+                logger.info(f"Skipping: {file}")
+                return
+        # 文件有变化，标记为修改
+        meta.operation = "MOD"  # type: ignore[attr-defined]
 
     # 获取文件哈希
     hashes = get_hashes(file)
-    # 写入数据库 - 如果是修改操作，更新现有记录
+    # 写入数据库 - 如果是修改操作，更新现有记录（优化：只在写入时加锁）
     with lock:
         if meta.operation == "MOD":
-            db_manager.update_file(meta, FileHash(**hashes, size=file.stat().st_size))
+            db_manager.update_file(meta, FileHash(**hashes, size=file_stat.st_size))
         else:
-            db_manager.add(meta, FileHash(**hashes, size=file.stat().st_size))
+            db_manager.add(meta, FileHash(**hashes, size=file_stat.st_size))
 
 
 def scan_file_worker(
@@ -232,9 +231,6 @@ if __name__ == "__main__":
         setattr(settings, "MACHINE_NAME", args.machine_name)
 
     db_manager.init("sqlite:///" + str(args.db_path))
-    # db_manager.init("sqlite:///:memory:")
-    # db_manager.init("sqlite:///test.db")
-    # database.create_tables()
     init_file_logger(args.log_path)
 
     try:
