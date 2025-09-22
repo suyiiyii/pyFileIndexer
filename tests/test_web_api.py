@@ -1,5 +1,6 @@
 import pytest
 import sys
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from unittest.mock import patch, MagicMock
@@ -22,11 +23,12 @@ def client():
 @pytest.fixture
 def mock_file_meta():
     """创建模拟文件元数据"""
+    import tempfile
     return FileMeta(
         id=1,
         hash_id=1,
         name="test_file.txt",
-        path="/tmp/test_file.txt",
+        path=str(Path(tempfile.gettempdir()) / "test_file.txt"),
         machine="test_machine",
         created=datetime(2024, 1, 1, 12, 0, 0),
         modified=datetime(2024, 1, 1, 12, 0, 0),
@@ -85,7 +87,7 @@ class TestWebAPI:
 
         file_data = data['files'][0]
         assert file_data['meta']['name'] == "test_file.txt"
-        assert file_data['meta']['path'] == "/tmp/test_file.txt"
+        assert file_data['meta']['path'].endswith("test_file.txt")
         assert file_data['hash']['size'] == 1024
 
     @patch('app.db_manager')
@@ -138,18 +140,19 @@ class TestWebAPI:
     def test_search_files_by_path(self, mock_db_manager, client, mock_file_meta, mock_file_hash):
         """测试按路径搜索"""
         mock_db_manager.search_files.return_value = [(mock_file_meta, mock_file_hash)]
+        temp_path = str(Path(tempfile.gettempdir()).parent)  # Get parent of temp directory
 
         response = client.get("/api/search", params={
-            "query": "/tmp",
+            "query": temp_path,
             "search_type": "path"
         })
 
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert data[0]['meta']['path'] == "/tmp/test_file.txt"
+        assert temp_path in data[0]['meta']['path']
 
-        mock_db_manager.search_files.assert_called_once_with("/tmp", "path")
+        mock_db_manager.search_files.assert_called_once_with(temp_path, "path")
 
     @patch('app.db_manager')
     def test_search_files_by_hash(self, mock_db_manager, client, mock_file_meta, mock_file_hash):

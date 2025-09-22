@@ -66,7 +66,7 @@ def sample_file_meta() -> FileMeta:
     return FileMeta(
         hash_id=1,
         name="test_file.txt",
-        path="/tmp/test_file.txt",
+        path=str(Path(tempfile.gettempdir()) / "test_file.txt"),
         machine="test_machine",
         created=datetime(2024, 1, 1, 12, 0, 0),
         modified=datetime(2024, 1, 1, 12, 0, 0),

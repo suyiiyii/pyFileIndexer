@@ -89,7 +89,7 @@ class TestFileMeta:
         """测试 FileMeta 对象创建"""
         assert sample_file_meta.hash_id == 1
         assert sample_file_meta.name == "test_file.txt"
-        assert sample_file_meta.path == "/tmp/test_file.txt"
+        assert sample_file_meta.path.endswith("test_file.txt")
         assert sample_file_meta.machine == "test_machine"
         assert sample_file_meta.operation == "ADD"
 
