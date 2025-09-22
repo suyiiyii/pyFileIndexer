@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 if TYPE_CHECKING:
     from models import FileHash, FileMeta
@@ -45,10 +44,9 @@ class DatabaseManager:
     def init(self, db_url: str):
         """初始化数据库连接，支持多线程安全。"""
         if db_url.startswith("sqlite"):
-            # SQLite 特殊配置，支持多线程
+            # SQLite 配置，支持多线程，优化磁盘数据库性能
             self.engine = create_engine(
                 db_url,
-                poolclass=StaticPool,
                 connect_args={
                     'check_same_thread': False,  # 允许跨线程使用
                     'timeout': 20  # 设置超时

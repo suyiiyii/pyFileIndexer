@@ -232,9 +232,6 @@ if __name__ == "__main__":
         setattr(settings, "MACHINE_NAME", args.machine_name)
 
     db_manager.init("sqlite:///" + str(args.db_path))
-    # db_manager.init("sqlite:///:memory:")
-    # db_manager.init("sqlite:///test.db")
-    # database.create_tables()
     init_file_logger(args.log_path)
 
     try:

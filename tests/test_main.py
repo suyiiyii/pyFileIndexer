@@ -354,14 +354,14 @@ class TestFileScanningLogic:
     @pytest.mark.unit
     @pytest.mark.database
     @pytest.mark.filesystem
-    def test_scan_file_thread_safety(self, test_files, memory_db_manager, mock_settings):
+    def test_scan_file_thread_safety(self, test_files, file_db_manager, mock_settings):
         """测试文件扫描的线程安全性"""
         small_file = test_files["small"]
         errors = []
 
         def scan_with_error_handling():
             try:
-                with patch('main.db_manager', memory_db_manager):
+                with patch('main.db_manager', file_db_manager):
                     scan_file(small_file)
             except Exception as e:
                 errors.append(e)
@@ -472,7 +472,7 @@ class TestConcurrentScanning:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    def test_multiple_workers(self, test_files, memory_db_manager, mock_settings, thread_count):
+    def test_multiple_workers(self, test_files, file_db_manager, mock_settings, thread_count):
         """测试多个工作线程并发处理"""
         file_queue = queue.Queue()
 
@@ -484,7 +484,7 @@ class TestConcurrentScanning:
         for _ in range(thread_count):
             file_queue.put(Path())
 
-        with patch('main.db_manager', memory_db_manager):
+        with patch('main.db_manager', file_db_manager):
             with patch('main.stop_event') as mock_stop_event:
                 mock_stop_event.is_set.return_value = False
 
@@ -498,7 +498,7 @@ class TestConcurrentScanning:
                     thread.join()
 
         # 验证所有文件都被处理
-        with memory_db_manager.session_factory() as session:
+        with file_db_manager.session_factory() as session:
             from models import FileMeta
             file_count = session.query(FileMeta).count()
             assert file_count == len(test_files)
