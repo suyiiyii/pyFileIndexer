@@ -450,14 +450,15 @@ class DatabaseManager:
             # 2. 批量查询已存在的哈希
             existing_hashes = self.get_existing_hashes_batch(hash_data)
 
-            # 3. 准备需要插入的新哈希
-            new_hash_mappings = []
+            # 3. 准备需要插入的新哈希，去重批次内的重复哈希
+            seen_hashes = set()
             hash_to_insert = []
 
             for item in hash_data:
                 hash_key = (item['md5'], item['sha1'], item['sha256'])
-                if hash_key not in existing_hashes:
+                if hash_key not in existing_hashes and hash_key not in seen_hashes:
                     hash_to_insert.append(item)
+                    seen_hashes.add(hash_key)
 
             # 4. 批量插入新哈希
             if hash_to_insert:
