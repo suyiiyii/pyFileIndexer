@@ -19,7 +19,7 @@ pyFileIndexer 是一个高效的文件索引和去重工具，通过计算文件
 ```bash
 # 扫描当前目录
 docker run --rm -v $(pwd):$(pwd) \
-  registry.cn-shenzhen.aliyuncs.com/suyiiyii/py:5 \
+  ghcr.io/suyiiyii/pyfileindexer:latest \
   $(pwd) \
   --machine_name "MyDevice" \
   --db_path $(pwd)/indexer.db \
