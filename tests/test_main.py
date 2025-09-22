@@ -290,6 +290,9 @@ class TestFileScanningLogic:
 
         with patch('main.db_manager', memory_db_manager):
             scan_file(small_file)
+            # 刷新批量处理器以确保数据写入数据库
+            from main import batch_processor
+            batch_processor.flush()
 
             # 验证文件被添加到数据库
             retrieved_file = memory_db_manager.get_file_by_path(str(small_file.absolute()))
@@ -307,6 +310,9 @@ class TestFileScanningLogic:
         with patch('main.db_manager', memory_db_manager):
             # 首次扫描
             scan_file(small_file)
+            # 刷新批量处理器
+            from main import batch_processor
+            batch_processor.flush()
 
             # 获取文件信息
             file_meta = memory_db_manager.get_file_by_path(str(small_file.absolute()))
@@ -331,6 +337,9 @@ class TestFileScanningLogic:
         with patch('main.db_manager', memory_db_manager):
             # 首次扫描
             scan_file(small_file)
+            # 刷新批量处理器
+            from main import batch_processor
+            batch_processor.flush()
 
             # 模拟文件被修改
             modified_content = "Modified content"
@@ -338,6 +347,7 @@ class TestFileScanningLogic:
 
             # 再次扫描
             scan_file(small_file)
+            batch_processor.flush()
 
             # 验证文件被标记为修改
             files = []
@@ -395,6 +405,9 @@ class TestWorkerThreads:
                 mock_stop_event.is_set.return_value = False
 
                 scan_file_worker(file_queue)
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
 
         # 验证文件被处理
         retrieved_file = memory_db_manager.get_file_by_path(str(test_files["small"].absolute()))
@@ -496,6 +509,10 @@ class TestConcurrentScanning:
 
                 for thread in threads:
                     thread.join()
+
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
 
         # 验证所有文件都被处理
         with file_db_manager.session_factory() as session:

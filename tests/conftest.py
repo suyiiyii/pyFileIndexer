@@ -192,3 +192,21 @@ def thread_count() -> int:
 def performance_test_size() -> int:
     """返回性能测试的数据大小"""
     return 1000  # 可以根据需要调整
+
+
+@pytest.fixture(autouse=True)
+def clear_batch_processor():
+    """在每个测试前后清理批量处理器"""
+    try:
+        from main import batch_processor
+        batch_processor.clear()
+    except ImportError:
+        pass
+
+    yield  # 运行测试
+
+    try:
+        from main import batch_processor
+        batch_processor.clear()
+    except ImportError:
+        pass
