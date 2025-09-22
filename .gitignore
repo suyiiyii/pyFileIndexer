@@ -4,5 +4,4 @@ __pycache__/
 .env
 # Ignore dynaconf secret files
 .secrets.*
-web/frontend/public
 .DS_Store
