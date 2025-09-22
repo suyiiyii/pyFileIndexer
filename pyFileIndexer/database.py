@@ -2,7 +2,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, tuple_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -384,6 +384,149 @@ class DatabaseManager:
                 })
 
             return duplicates
+
+    def get_existing_hashes_batch(self, hash_data: list[dict]) -> dict[str, int]:
+        """批量查询已存在的哈希，返回哈希值到ID的映射"""
+        from models import FileHash
+
+        if not hash_data:
+            return {}
+
+        with self.session_scope() as session:
+            # 构建查询条件，查找所有可能存在的哈希
+            hash_keys = [(h['md5'], h['sha1'], h['sha256']) for h in hash_data]
+
+            if not hash_keys:
+                return {}
+
+            existing_hashes = session.query(FileHash).filter(
+                tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(hash_keys)
+            ).all()
+
+            # 创建映射：(md5, sha1, sha256) -> hash_id
+            hash_mapping = {}
+            for hash_obj in existing_hashes:
+                key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)
+                hash_mapping[key] = hash_obj.id
+
+            return hash_mapping
+
+    def add_files_batch(self, files_data: list[dict]):
+        """批量添加文件和哈希信息
+        files_data: list of dict containing:
+        - file_meta: FileMeta object
+        - file_hash: FileHash object
+        - operation: 'ADD' or 'MOD'
+        """
+        from models import FileMeta, FileHash
+
+        if not files_data:
+            return
+
+        with self.session_scope() as session:
+            # 1. 分离哈希和文件数据
+            hash_data = []
+            new_files = []
+            update_files = []
+
+            for item in files_data:
+                file_meta = item['file_meta']
+                file_hash = item['file_hash']
+                operation = item['operation']
+
+                hash_dict = {
+                    'md5': file_hash.md5,
+                    'sha1': file_hash.sha1,
+                    'sha256': file_hash.sha256,
+                    'size': file_hash.size
+                }
+                hash_data.append(hash_dict)
+
+                if operation == 'ADD':
+                    new_files.append((file_meta, file_hash, hash_dict))
+                else:  # MOD
+                    update_files.append((file_meta, file_hash, hash_dict))
+
+            # 2. 批量查询已存在的哈希
+            existing_hashes = self.get_existing_hashes_batch(hash_data)
+
+            # 3. 准备需要插入的新哈希
+            new_hash_mappings = []
+            hash_to_insert = []
+
+            for item in hash_data:
+                hash_key = (item['md5'], item['sha1'], item['sha256'])
+                if hash_key not in existing_hashes:
+                    hash_to_insert.append(item)
+
+            # 4. 批量插入新哈希
+            if hash_to_insert:
+                session.bulk_insert_mappings(FileHash, hash_to_insert)
+                session.flush()  # 获取插入的ID
+
+                # 重新查询获取新插入哈希的ID
+                hash_keys = [(h['md5'], h['sha1'], h['sha256']) for h in hash_to_insert]
+                new_hashes = session.query(FileHash).filter(
+                    tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(hash_keys)
+                ).all()
+
+                for hash_obj in new_hashes:
+                    key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)
+                    existing_hashes[key] = hash_obj.id
+
+            # 5. 准备文件数据并设置hash_id
+            files_to_insert = []
+            files_to_update = []
+
+            # 处理新文件
+            for file_meta, file_hash, hash_dict in new_files:
+                hash_key = (hash_dict['md5'], hash_dict['sha1'], hash_dict['sha256'])
+                hash_id = existing_hashes[hash_key]
+
+                file_dict = {
+                    'name': file_meta.name,
+                    'path': file_meta.path,
+                    'machine': file_meta.machine,
+                    'created': file_meta.created,
+                    'modified': file_meta.modified,
+                    'scanned': file_meta.scanned,
+                    'operation': file_meta.operation,
+                    'hash_id': hash_id
+                }
+                files_to_insert.append(file_dict)
+
+            # 处理更新文件
+            for file_meta, file_hash, hash_dict in update_files:
+                hash_key = (hash_dict['md5'], hash_dict['sha1'], hash_dict['sha256'])
+                hash_id = existing_hashes[hash_key]
+
+                # 查找现有文件记录
+                existing_file = session.query(FileMeta).filter_by(path=file_meta.path).first()
+                if existing_file:
+                    existing_file.name = file_meta.name
+                    existing_file.created = file_meta.created
+                    existing_file.modified = file_meta.modified
+                    existing_file.scanned = file_meta.scanned
+                    existing_file.operation = file_meta.operation
+                    existing_file.machine = file_meta.machine
+                    existing_file.hash_id = hash_id
+                else:
+                    # 如果文件不存在，添加为新文件
+                    file_dict = {
+                        'name': file_meta.name,
+                        'path': file_meta.path,
+                        'machine': file_meta.machine,
+                        'created': file_meta.created,
+                        'modified': file_meta.modified,
+                        'scanned': file_meta.scanned,
+                        'operation': file_meta.operation,
+                        'hash_id': hash_id
+                    }
+                    files_to_insert.append(file_dict)
+
+            # 6. 批量插入新文件
+            if files_to_insert:
+                session.bulk_insert_mappings(FileMeta, files_to_insert)
 
 
 # 创建全局单例实例

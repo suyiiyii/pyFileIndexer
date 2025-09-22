@@ -107,8 +107,57 @@ def get_metadata(file: Path, stat_result: os.stat_result = None) -> FileMeta:
 lock = threading.Lock()
 
 
+class BatchProcessor:
+    """批量文件处理器"""
+
+    def __init__(self, batch_size: int = 200):
+        self.batch_size = batch_size
+        self.batch_data = []
+        self.lock = threading.Lock()
+
+    def add_file(self, file_meta, file_hash, operation):
+        """添加文件到批量处理队列"""
+        with self.lock:
+            self.batch_data.append({
+                'file_meta': file_meta,
+                'file_hash': file_hash,
+                'operation': operation
+            })
+
+            # 检查是否需要刷新批量
+            if len(self.batch_data) >= self.batch_size:
+                self._flush_batch()
+
+    def _flush_batch(self):
+        """刷新当前批量到数据库"""
+        if not self.batch_data:
+            return
+
+        try:
+            db_manager.add_files_batch(self.batch_data.copy())
+            logger.info(f"批量处理了 {len(self.batch_data)} 个文件")
+            self.batch_data.clear()
+        except Exception as e:
+            logger.error(f"批量处理失败: {e}")
+            raise
+
+    def flush(self):
+        """强制刷新剩余的数据"""
+        with self.lock:
+            self._flush_batch()
+
+    def clear(self):
+        """清空批量数据（用于测试或重置）"""
+        with self.lock:
+            self.batch_data.clear()
+
+
+# 全局批量处理器
+batch_processor = BatchProcessor()
+
+
 def scan_file(file: Path):
-    """扫描单个文件，将文件信息和哈希信息保存到数据库。"""
+    """扫描单个文件，收集文件信息并添加到批量处理队列。"""
     # 优化：只调用一次 file.stat()
     file_stat = file.stat()
     meta = get_metadata(file, file_stat)
@@ -133,12 +182,10 @@ def scan_file(file: Path):
 
     # 获取文件哈希
     hashes = get_hashes(file)
-    # 写入数据库 - 如果是修改操作，更新现有记录（优化：只在写入时加锁）
-    with lock:
-        if meta.operation == "MOD":
-            db_manager.update_file(meta, FileHash(**hashes, size=file_stat.st_size))
-        else:
-            db_manager.add(meta, FileHash(**hashes, size=file_stat.st_size))
+    file_hash = FileHash(**hashes, size=file_stat.st_size)
+
+    # 添加到批量处理队列
+    batch_processor.add_file(meta, file_hash, meta.operation)
 
 
 def scan_file_worker(
@@ -211,6 +258,9 @@ def scan(path: Union[str, Path]):
         filepaths.put(Path())  # Dummy Path to signal end
     with tqdm(total=filepaths.qsize()) as pbar:
         scan_file_worker(filepaths, pbar=pbar)
+
+    # 刷新剩余的批量数据
+    batch_processor.flush()
     logger.info("文件扫描结束。")
 
 
