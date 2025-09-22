@@ -8,8 +8,8 @@ class FileHash(Base):
     __tablename__ = 'file_hash'
     # id 主键，自增
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # 文件大小
-    size = Column(Integer)
+    # 文件大小，添加索引用于大小范围查询
+    size = Column(Integer, index=True)
     # 文件哈希，索引
     md5 = Column(String, index=True)
     sha1 = Column(String, index=True)
@@ -25,15 +25,15 @@ class FileMeta(Base):
     hash_id = Column(Integer, index=True)
     # 文件名，索引
     name = Column(String, index=True)
-    # 机器名称
-    machine = Column(String)
+    # 机器名称，添加索引用于按机器过滤
+    machine = Column(String, index=True)
     # 文件路径，全文索引
     path = Column(String, index=True)
-    # 创建日期
-    created = Column(DateTime)
-    # 修改日期
-    modified = Column(DateTime)
-    # 扫描日期
-    scanned = Column(DateTime)
-    # 操作
-    operation = Column(String)
+    # 创建日期，添加索引用于时间范围查询
+    created = Column(DateTime, index=True)
+    # 修改日期，添加索引用于时间范围查询
+    modified = Column(DateTime, index=True)
+    # 扫描日期，添加索引用于时间范围查询
+    scanned = Column(DateTime, index=True)
+    # 操作，添加索引用于按操作类型过滤
+    operation = Column(String, index=True)

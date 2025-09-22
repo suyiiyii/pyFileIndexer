@@ -110,6 +110,27 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def get_file_with_hash_by_path(self, path: str) -> Optional[tuple["FileMeta", Optional["FileHash"]]]:
+        """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
+        from models import FileMeta, FileHash
+
+        session = self.session_factory()
+        try:
+            result = session.query(FileMeta, FileHash).outerjoin(
+                FileHash, FileMeta.hash_id == FileHash.id
+            ).filter(FileMeta.path == path).first()
+
+            if result:
+                file_meta, file_hash = result
+                if file_meta:
+                    session.expunge(file_meta)
+                if file_hash:
+                    session.expunge(file_hash)
+                return (file_meta, file_hash)
+            return None
+        finally:
+            session.close()
+
     def get_hash_by_id(self, hash_id: int) -> Optional["FileHash"]:
         """根据哈希 ID 查询哈希信息。"""
         from models import FileHash
