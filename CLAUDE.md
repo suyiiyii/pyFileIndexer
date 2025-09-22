@@ -16,11 +16,19 @@ uv sync
 # Run the indexer
 uv run python pyFileIndexer/main.py <path> --machine_name <name> --db_path <db_file> --log_path <log_file>
 
+# Run web interface locally
+uv run python pyFileIndexer/main.py --web --db_path indexer.db --port 8000
+
 # Build Docker image
 docker build -t pyfileindexer .
 
-# Run via Docker
+# Run indexer via Docker (scanning files)
 docker run --rm -v $(pwd):$(pwd) pyfileindexer $(pwd) --db_path $(pwd)/indexer.db --log_path $(pwd)/indexer.log
+
+# Run web interface via Docker
+docker run --rm -p 8000:8000 --tmpfs /data pyfileindexer --web --db_path /data/indexer.db --port 8000
+# Or with persistent data:
+docker run --rm -p 8000:8000 -v $(pwd)/data:/data pyfileindexer --web --db_path /data/indexer.db --port 8000
 ```
 
 ## Architecture

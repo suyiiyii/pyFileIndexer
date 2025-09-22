@@ -220,6 +220,171 @@ class DatabaseManager:
                 if hash is not None:
                     session.add(hash)
 
+    def get_files_paginated(self, page: int = 1, per_page: int = 20, filters: Optional[dict] = None) -> dict:
+        """分页查询文件列表"""
+        from models import FileMeta, FileHash
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            with self.session_scope() as session:
+                query = session.query(FileMeta, FileHash).outerjoin(
+                    FileHash, FileMeta.hash_id == FileHash.id
+                )
+
+                # 应用过滤器
+                if filters:
+                    if filters.get('name'):
+                        query = query.filter(FileMeta.name.contains(filters['name']))
+                    if filters.get('path'):
+                        query = query.filter(FileMeta.path.contains(filters['path']))
+                    if filters.get('machine'):
+                        query = query.filter(FileMeta.machine == filters['machine'])
+                    if filters.get('min_size') is not None:
+                        query = query.filter(FileHash.size >= filters['min_size'])
+                    if filters.get('max_size') is not None:
+                        query = query.filter(FileHash.size <= filters['max_size'])
+                    if filters.get('hash_value'):
+                        hash_value = filters['hash_value']
+                        query = query.filter(
+                            (FileHash.md5 == hash_value) |
+                            (FileHash.sha1 == hash_value) |
+                            (FileHash.sha256 == hash_value)
+                        )
+
+                # 计算总数
+                total = query.count()
+                logger.debug(f"Total files found: {total}")
+
+                # 分页
+                offset = (page - 1) * per_page
+                results = query.offset(offset).limit(per_page).all()
+                logger.debug(f"Retrieved {len(results)} files for page {page}")
+
+                # 分离对象
+                files = []
+                for file_meta, file_hash in results:
+                    try:
+                        if file_meta:
+                            session.expunge(file_meta)
+                        if file_hash:
+                            session.expunge(file_hash)
+                        files.append((file_meta, file_hash))
+                    except Exception as e:
+                        logger.error(f"Error processing file record: {e}")
+                        continue
+
+                return {
+                    'files': files,
+                    'total': total,
+                    'page': page,
+                    'per_page': per_page,
+                    'pages': (total + per_page - 1) // per_page
+                }
+
+        except Exception as e:
+            logger.error(f"Error in get_files_paginated: {e}")
+            raise
+
+    def search_files(self, query: str, search_type: str = 'name') -> list:
+        """搜索文件"""
+        from models import FileMeta, FileHash
+
+        with self.session_scope() as session:
+            db_query = session.query(FileMeta, FileHash).outerjoin(
+                FileHash, FileMeta.hash_id == FileHash.id
+            )
+
+            if search_type == 'name':
+                db_query = db_query.filter(FileMeta.name.contains(query))
+            elif search_type == 'path':
+                db_query = db_query.filter(FileMeta.path.contains(query))
+            elif search_type == 'hash':
+                db_query = db_query.filter(
+                    (FileHash.md5 == query) |
+                    (FileHash.sha1 == query) |
+                    (FileHash.sha256 == query)
+                )
+
+            results = db_query.all()
+
+            # 分离对象
+            files = []
+            for file_meta, file_hash in results:
+                if file_meta:
+                    session.expunge(file_meta)
+                if file_hash:
+                    session.expunge(file_hash)
+                files.append((file_meta, file_hash))
+
+            return files
+
+    def get_statistics(self) -> dict:
+        """获取统计信息"""
+        from models import FileMeta, FileHash
+        from sqlalchemy import func
+
+        with self.session_scope() as session:
+            # 总文件数
+            total_files = session.query(FileMeta).count()
+
+            # 总大小
+            total_size = session.query(func.sum(FileHash.size)).scalar() or 0
+
+            # 按机器统计
+            machine_stats = session.query(
+                FileMeta.machine,
+                func.count(FileMeta.id)
+            ).group_by(FileMeta.machine).all()
+
+            # 重复文件统计
+            duplicate_hashes = session.query(
+                FileHash.md5,
+                func.count(FileMeta.id).label('count')
+            ).join(FileMeta, FileMeta.hash_id == FileHash.id)\
+             .group_by(FileHash.md5)\
+             .having(func.count(FileMeta.id) > 1).all()
+
+            return {
+                'total_files': total_files,
+                'total_size': total_size,
+                'machine_stats': {machine: count for machine, count in machine_stats},
+                'duplicate_files': len(duplicate_hashes)
+            }
+
+    def find_duplicate_files(self) -> list:
+        """查找重复文件"""
+        from models import FileMeta, FileHash
+        from sqlalchemy import func
+
+        with self.session_scope() as session:
+            # 查找有多个文件的哈希值
+            duplicate_hashes = session.query(FileHash.md5)\
+                .join(FileMeta, FileMeta.hash_id == FileHash.id)\
+                .group_by(FileHash.md5)\
+                .having(func.count(FileMeta.id) > 1).all()
+
+            duplicates = []
+            for (md5_hash,) in duplicate_hashes:
+                files = session.query(FileMeta, FileHash)\
+                    .join(FileHash, FileMeta.hash_id == FileHash.id)\
+                    .filter(FileHash.md5 == md5_hash).all()
+
+                # 分离对象
+                file_group = []
+                for file_meta, file_hash in files:
+                    session.expunge(file_meta)
+                    session.expunge(file_hash)
+                    file_group.append((file_meta, file_hash))
+
+                duplicates.append({
+                    'hash': md5_hash,
+                    'files': file_group
+                })
+
+            return duplicates
+
 
 # 创建全局单例实例
 db_manager = DatabaseManager()

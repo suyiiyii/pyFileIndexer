@@ -216,7 +216,13 @@ def scan(path: Union[str, Path]):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="pyFileIndexer")
-    parser.add_argument("path", type=str, help="The path to scan.")
+
+    # 创建互斥参数组：扫描模式 vs Web 模式
+    mode_group = parser.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument("path", nargs="?", type=str, help="The path to scan.")
+    mode_group.add_argument("--web", action="store_true", help="Start web server mode.")
+
+    # 通用参数
     parser.add_argument("--machine_name", type=str, help="The machine name.")
     parser.add_argument(
         "--db_path", type=str, help="The database path.", default="indexer.db"
@@ -224,19 +230,38 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log_path", type=str, help="The log path.", default="indexer.log"
     )
+
+    # Web 模式专用参数
+    parser.add_argument(
+        "--port", type=int, help="Web server port (default: 8000).", default=8000
+    )
+    parser.add_argument(
+        "--host", type=str, help="Web server host (default: 0.0.0.0).", default="0.0.0.0"
+    )
+
     args = parser.parse_args()
 
     # 传入的机器名称覆盖配置文件中的机器名称
     if args.machine_name:
         setattr(settings, "MACHINE_NAME", args.machine_name)
 
+    # 初始化数据库和日志
     db_manager.init("sqlite:///" + str(args.db_path))
     init_file_logger(args.log_path)
 
-    try:
-        scan(args.path)
-    except KeyboardInterrupt:
-        stop_event.set()
-        logger.error("KeyboardInterrupt")
-    finally:
-        logger.info("扫描完成。")
+    if args.web:
+        # Web 服务器模式
+        from web_server import start_web_server
+        start_web_server(args.db_path, args.host, args.port)
+    else:
+        # 文件扫描模式
+        if not args.path:
+            parser.error("Path is required when not using --web mode")
+
+        try:
+            scan(args.path)
+        except KeyboardInterrupt:
+            stop_event.set()
+            logger.error("KeyboardInterrupt")
+        finally:
+            logger.info("扫描完成。")
