@@ -1,0 +1,339 @@
+name: Performance Benchmark
+
+on:
+  # 当推送 v* 标签时触发
+  push:
+    tags:
+      - 'v*'
+
+  # 允许手动触发
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for benchmark (optional)'
+        required: false
+        default: 'manual-run'
+      small_files:
+        description: 'Small scale test file count'
+        required: false
+        default: '200'
+      medium_files:
+        description: 'Medium scale test file count'
+        required: false
+        default: '2000'
+      large_files:
+        description: 'Large scale test file count'
+        required: false
+        default: '8000'
+
+env:
+  # 默认测试参数
+  BENCHMARK_SMALL: ${{ github.event.inputs.small_files || '200' }}
+  BENCHMARK_MEDIUM: ${{ github.event.inputs.medium_files || '2000' }}
+  BENCHMARK_LARGE: ${{ github.event.inputs.large_files || '8000' }}
+  BENCHMARK_ROUNDS: '3'
+  BENCHMARK_TIMEOUT: '30m'
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史便于版本对比
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'web/frontend/package-lock.json'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-benchmark-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-benchmark-
+            ${{ runner.os }}-uv-
+
+      - name: Install Python dependencies
+        run: |
+          uv sync --all-extras
+
+      - name: Install frontend dependencies and build
+        run: |
+          cd web/frontend
+          npm ci
+          npm run build
+
+      - name: Get version information
+        id: version
+        run: |
+          # 获取版本信息
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="${{ github.event.inputs.tag_name || 'manual-run' }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit_sha=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date -u +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: Collect system information
+        id: system_info
+        run: |
+          echo "=== System Information ===" > system_info.txt
+          echo "Date: $(date -u)" >> system_info.txt
+          echo "OS: $(uname -a)" >> system_info.txt
+          echo "CPU Info:" >> system_info.txt
+          grep "model name" /proc/cpuinfo | head -1 >> system_info.txt
+          echo "CPU Cores: $(nproc)" >> system_info.txt
+          echo "Memory: $(free -h | grep Mem)" >> system_info.txt
+          echo "Disk Space: $(df -h / | tail -1)" >> system_info.txt
+          echo "Python Version: $(python --version)" >> system_info.txt
+          echo "Git Commit: ${{ steps.version.outputs.commit_sha }}" >> system_info.txt
+          echo "Version Tag: ${{ steps.version.outputs.version }}" >> system_info.txt
+          echo "" >> system_info.txt
+
+          cat system_info.txt
+
+      - name: Prepare benchmark output directory
+        run: |
+          BENCHMARK_DIR="benchmark_results_${{ steps.version.outputs.version }}_${{ steps.version.outputs.timestamp }}"
+          echo "BENCHMARK_DIR=$BENCHMARK_DIR" >> $GITHUB_ENV
+          mkdir -p "$BENCHMARK_DIR"
+
+          # 复制系统信息
+          cp system_info.txt "$BENCHMARK_DIR/"
+
+      - name: Run performance benchmark
+        id: benchmark
+        timeout-minutes: 30
+        run: |
+          echo "🚀 开始性能测试..."
+          echo "测试参数:"
+          echo "  Small: ${{ env.BENCHMARK_SMALL }} 文件"
+          echo "  Medium: ${{ env.BENCHMARK_MEDIUM }} 文件"
+          echo "  Large: ${{ env.BENCHMARK_LARGE }} 文件"
+          echo "  Rounds: ${{ env.BENCHMARK_ROUNDS }} 轮"
+          echo "  Output: ${{ env.BENCHMARK_DIR }}"
+          echo ""
+
+          # 运行性能测试
+          uv run python benchmark.py \
+            --small "${{ env.BENCHMARK_SMALL }}" \
+            --medium "${{ env.BENCHMARK_MEDIUM }}" \
+            --large "${{ env.BENCHMARK_LARGE }}" \
+            --rounds "${{ env.BENCHMARK_ROUNDS }}" \
+            --machine-name "github-actions-${{ runner.os }}" \
+            --output "${{ env.BENCHMARK_DIR }}" \
+            2>&1 | tee "${{ env.BENCHMARK_DIR }}/benchmark_run.log"
+
+          echo "✅ 性能测试完成"
+
+          # 检查结果文件
+          echo "生成的文件:"
+          ls -la "${{ env.BENCHMARK_DIR }}/"
+
+      - name: Generate metadata
+        run: |
+          # 创建元数据文件
+          cat > "${{ env.BENCHMARK_DIR }}/metadata.json" << EOF
+          {
+            "version": "${{ steps.version.outputs.version }}",
+            "commit_sha": "${{ steps.version.outputs.commit_sha }}",
+            "timestamp": "${{ steps.version.outputs.timestamp }}",
+            "github_run_id": "${{ github.run_id }}",
+            "github_run_number": "${{ github.run_number }}",
+            "trigger_event": "${{ github.event_name }}",
+            "runner_os": "${{ runner.os }}",
+            "python_version": "3.11",
+            "test_parameters": {
+              "small_files": ${{ env.BENCHMARK_SMALL }},
+              "medium_files": ${{ env.BENCHMARK_MEDIUM }},
+              "large_files": ${{ env.BENCHMARK_LARGE }},
+              "rounds": ${{ env.BENCHMARK_ROUNDS }}
+            }
+          }
+          EOF
+
+          echo "元数据文件内容:"
+          cat "${{ env.BENCHMARK_DIR }}/metadata.json"
+
+      - name: Extract key metrics
+        id: metrics
+        run: |
+          # 从 JSON 结果中提取关键指标
+          if [ -f "${{ env.BENCHMARK_DIR }}/benchmark_results.json" ]; then
+            echo "🔍 提取性能指标..."
+
+            # 使用 Python 提取关键指标
+            python3 << 'EOF' > "${{ env.BENCHMARK_DIR }}/key_metrics.txt"
+          import json
+          import sys
+
+          try:
+              with open("${{ env.BENCHMARK_DIR }}/benchmark_results.json", "r") as f:
+                  data = json.load(f)
+
+              results = data.get("results", [])
+              if not results:
+                  print("No results found")
+                  sys.exit(1)
+
+              print("=== 关键性能指标 ===")
+              print(f"总测试数: {len(results)}")
+
+              # 按规模分组
+              scales = {}
+              for result in results:
+                  name = result["test_name"]
+                  if "small" in name:
+                      scale = "small"
+                  elif "medium" in name:
+                      scale = "medium"
+                  elif "large" in name:
+                      scale = "large"
+                  else:
+                      scale = "other"
+
+                  if scale not in scales:
+                      scales[scale] = []
+                  scales[scale].append(result)
+
+              for scale, scale_results in scales.items():
+                  if not scale_results:
+                      continue
+
+                  avg_files_per_sec = sum(r["files_per_second"] for r in scale_results) / len(scale_results)
+                  avg_mb_per_sec = sum(r["mb_per_second"] for r in scale_results) / len(scale_results)
+                  avg_scan_time = sum(r["scan_time_seconds"] for r in scale_results) / len(scale_results)
+
+                  print(f"\n{scale.upper()} 规模:")
+                  print(f"  平均处理速度: {avg_files_per_sec:.1f} 文件/秒")
+                  print(f"  平均吞吐量: {avg_mb_per_sec:.2f} MB/秒")
+                  print(f"  平均扫描时间: {avg_scan_time:.2f} 秒")
+                  print(f"  测试轮数: {len(scale_results)}")
+
+          except Exception as e:
+              print(f"错误: {e}")
+              sys.exit(1)
+          EOF
+
+            cat "${{ env.BENCHMARK_DIR }}/key_metrics.txt"
+          else
+            echo "⚠️ 未找到 benchmark_results.json 文件"
+          fi
+
+      - name: Create performance summary
+        run: |
+          # 创建性能总结文件
+          echo "# Performance Benchmark Results" > "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "**Commit:** ${{ steps.version.outputs.commit_sha }}" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "**Date:** $(date -u)" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "**Runner:** ${{ runner.os }}" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "## Test Configuration" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- Small scale: ${{ env.BENCHMARK_SMALL }} files" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- Medium scale: ${{ env.BENCHMARK_MEDIUM }} files" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- Large scale: ${{ env.BENCHMARK_LARGE }} files" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- Test rounds: ${{ env.BENCHMARK_ROUNDS }}" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "## Key Metrics" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "\`\`\`" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+
+          if [ -f "${{ env.BENCHMARK_DIR }}/key_metrics.txt" ]; then
+            cat "${{ env.BENCHMARK_DIR }}/key_metrics.txt" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          else
+            echo "Key metrics not available" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          fi
+
+          echo "\`\`\`" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "## Files Included" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`benchmark_results.json\`: Complete performance data" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`benchmark_report.txt\`: Human-readable detailed report" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`benchmark_summary.txt\`: Statistical summary" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`benchmark_run.log\`: Complete execution log" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`system_info.txt\`: System information" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+          echo "- \`metadata.json\`: Test metadata" >> "${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md"
+
+      - name: Display final results
+        run: |
+          echo "📊 ===== 性能测试结果总结 ====="
+          echo ""
+          echo "版本: ${{ steps.version.outputs.version }}"
+          echo "测试目录: ${{ env.BENCHMARK_DIR }}"
+          echo ""
+          echo "生成的文件:"
+          ls -la "${{ env.BENCHMARK_DIR }}/"
+          echo ""
+
+          if [ -f "${{ env.BENCHMARK_DIR }}/key_metrics.txt" ]; then
+            echo "关键指标:"
+            cat "${{ env.BENCHMARK_DIR }}/key_metrics.txt"
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()  # 即使测试失败也上传已有结果
+        with:
+          name: benchmark-results-${{ steps.version.outputs.version }}-${{ steps.version.outputs.timestamp }}
+          path: ${{ env.BENCHMARK_DIR }}/
+          retention-days: 90  # 保留 90 天
+
+      - name: Create GitHub Release with benchmark results
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "Release ${{ steps.version.outputs.version }}"
+          body: |
+            ## Performance Benchmark Results
+
+            This release includes automated performance benchmark results.
+
+            **Key Metrics Summary:**
+            ```
+            ${{ steps.benchmark-summary || 'See detailed results in artifacts' }}
+            ```
+
+            📊 **Download detailed benchmark results from the artifacts above**
+
+            ### Test Configuration
+            - Small scale: ${{ env.BENCHMARK_SMALL }} files
+            - Medium scale: ${{ env.BENCHMARK_MEDIUM }} files
+            - Large scale: ${{ env.BENCHMARK_LARGE }} files
+            - Test rounds: ${{ env.BENCHMARK_ROUNDS }}
+            - Test environment: Ubuntu Latest (GitHub Actions)
+
+            ### Files Included in Artifacts
+            - `benchmark_results.json`: Complete performance data
+            - `benchmark_report.txt`: Human-readable report
+            - `benchmark_summary.txt`: Statistical summary
+            - `system_info.txt`: Test environment details
+            - `metadata.json`: Test metadata
+          files: |
+            ${{ env.BENCHMARK_DIR }}/PERFORMANCE_SUMMARY.md
+          draft: false
+          prerelease: contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -56,6 +56,10 @@ class TestEndToEndScanning:
                 ]:
                     scan_file(file_path)
 
+                # 刷新批量处理器以确保数据写入数据库
+                from main import batch_processor
+                batch_processor.flush()
+
         # 验证数据库中的数据
         with db_manager.session_factory() as session:
             file_count = session.query(FileMeta).count()
@@ -87,6 +91,10 @@ class TestEndToEndScanning:
                 small_file = test_files["small"]
                 scan_file(small_file)
 
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
+
                 # 验证文件被添加
                 file_meta = db_manager.get_file_by_path(str(small_file.absolute()))
                 assert file_meta.operation == "ADD"
@@ -106,6 +114,9 @@ class TestEndToEndScanning:
                 # 再次扫描
                 mock_settings.SCANNED = datetime.now()  # 更新扫描时间
                 scan_file(small_file)
+
+                # 刷新批量处理器
+                batch_processor.flush()
 
                 # 验证修改被检测到
                 with db_manager.session_factory() as session:
@@ -149,6 +160,10 @@ class TestEndToEndScanning:
                 scan_file(file1)
                 scan_file(file2)
 
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
+
         # 验证重复文件共享哈希
         file1_meta = db_manager.get_file_by_path(str(file1.absolute()))
         file2_meta = db_manager.get_file_by_path(str(file2.absolute()))
@@ -182,6 +197,10 @@ class TestEndToEndScanning:
                 mock_settings.SCANNED = datetime.now()
 
                 scan_file(test_files["small"])
+
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
 
         # 验证数据库文件存在
         assert db_path.exists()
@@ -223,6 +242,10 @@ class TestConcurrentScanning:
 
                         for file_path in files_subset:
                             scan_file(file_path)
+
+                        # 刷新批量处理器
+                        from main import batch_processor
+                        batch_processor.flush()
             except Exception as e:
                 errors.append(e)
 
@@ -290,6 +313,10 @@ class TestConcurrentScanning:
                         for file_path in files_subset:
                             scan_file(file_path)
                             completed_files.append(file_path)
+
+                        # 刷新批量处理器
+                        from main import batch_processor
+                        batch_processor.flush()
             except Exception as e:
                 errors.append(e)
 
@@ -475,6 +502,10 @@ class TestDataIntegrity:
                 test_file = test_files["small"]
                 scan_file(test_file)
 
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
+
                 # 获取数据库中的哈希
                 file_meta = db_manager.get_file_by_path(str(test_file.absolute()))
                 stored_hash = db_manager.get_hash_by_id(file_meta.hash_id)
@@ -599,13 +630,22 @@ class TestMemoryUsage:
                     file_path = files_dir / f"mem_test_{i:04d}.txt"
                     scan_file(file_path)
 
-                    # 每100个文件检查一次内存
-                    if i % 100 == 0 and use_psutil:
-                        current_memory = process.memory_info().rss
-                        memory_increase = current_memory - initial_memory
+                    # 每100个文件检查一次内存并刷新批量处理器
+                    if i % 100 == 0:
+                        # 刷新批量处理器
+                        from main import batch_processor
+                        batch_processor.flush()
 
-                        # 内存增长不应该太快（这个阈值可能需要调整）
-                        assert memory_increase < 100 * 1024 * 1024  # 不超过100MB
+                        if use_psutil:
+                            current_memory = process.memory_info().rss
+                            memory_increase = current_memory - initial_memory
+
+                            # 内存增长不应该太快（这个阈值可能需要调整）
+                            assert memory_increase < 100 * 1024 * 1024  # 不超过100MB
+
+                # 最终刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
 
         if use_psutil:
             final_memory = process.memory_info().rss
@@ -649,6 +689,10 @@ class TestBackupAndRestore:
                 mock_settings.SCANNED = datetime.now()
 
                 scan_file(test_files["small"])
+
+                # 刷新批量处理器
+                from main import batch_processor
+                batch_processor.flush()
 
         # 关闭连接
         db_manager.engine.dispose()
