@@ -144,7 +144,7 @@ __pycache__
 def create_ignore_file(temp_dir: Path, ignore_file_content: str) -> Path:
     """创建 .ignore 文件"""
     ignore_file = temp_dir / ".ignore"
-    ignore_file.write_text(ignore_file_content)
+    ignore_file.write_text(ignore_file_content, encoding='utf-8')
     return ignore_file
 
 
