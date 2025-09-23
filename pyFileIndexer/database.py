@@ -385,6 +385,13 @@ class DatabaseManager:
 
             return duplicates
 
+    def close(self):
+        """关闭数据库连接，释放资源"""
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None
+            self.Session = None
+
 
 # 创建全局单例实例
 db_manager = DatabaseManager()

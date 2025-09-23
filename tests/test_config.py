@@ -306,14 +306,14 @@ class TestConfigInAppContext:
 
 machine_name = "localhost"
 log_level = "DEBUG"
-""")
+""", encoding='utf-8')
 
         secrets_file = temp_dir / ".secrets.toml"
         secrets_file.write_text("""
 # 敏感配置（不应该提交到版本控制）
 
 db_encryption_key = "development_key_not_for_production"
-""")
+""", encoding='utf-8')
 
         # 切换到临时目录并测试配置加载
         original_cwd = os.getcwd()

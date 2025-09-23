@@ -15,6 +15,19 @@ from database import DatabaseManager
 from models import FileHash, FileMeta
 
 
+def cleanup_database(db_manager, db_path):
+    """Helper function to safely cleanup database resources on all platforms"""
+    db_manager.close()
+    if db_path.exists():
+        try:
+            db_path.unlink()
+        except PermissionError:
+            # Windows may need a brief wait
+            import time
+            time.sleep(0.1)
+            db_path.unlink()
+
+
 class TestEndToEndScanning:
     """端到端扫描测试"""
 
@@ -52,8 +65,7 @@ class TestEndToEndScanning:
             assert hash_count >= 1  # 至少一个哈希（可能更多，取决于文件内容）
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
     @pytest.mark.integration
     @pytest.mark.filesystem
@@ -81,7 +93,15 @@ class TestEndToEndScanning:
 
                 # 修改文件
                 original_content = small_file.read_text()
+                
+                # Add a small delay to ensure timestamp difference on all platforms
+                import time
+                time.sleep(0.1)
+                
                 small_file.write_text(original_content + "\nmodified")
+                
+                # Ensure the file system has time to update timestamps
+                time.sleep(0.1)
 
                 # 再次扫描
                 mock_settings.SCANNED = datetime.now()  # 更新扫描时间
@@ -98,8 +118,7 @@ class TestEndToEndScanning:
                     assert "MOD" in operations
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
     @pytest.mark.integration
     @pytest.mark.filesystem
@@ -142,8 +161,7 @@ class TestEndToEndScanning:
             assert hash_count == 1
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
     @pytest.mark.integration
     @pytest.mark.filesystem
