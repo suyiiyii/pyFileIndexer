@@ -393,6 +393,15 @@ class DatabaseManager:
             self.engine = None
             self.Session = None
 
+    @classmethod
+    def reset_instance(cls):
+        """重置单例实例，主要用于测试"""
+        with cls._lock:
+            if cls._instance is not None:
+                if hasattr(cls._instance, 'engine') and cls._instance.engine is not None:
+                    cls._instance.engine.dispose()
+            cls._instance = None
+
             
     def get_existing_hashes_batch(self, hash_data: list[dict]) -> dict[str, int]:
         """批量查询已存在的哈希，返回哈希值到ID的映射"""

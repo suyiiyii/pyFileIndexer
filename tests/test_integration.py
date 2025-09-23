@@ -17,15 +17,37 @@ from models import FileHash, FileMeta
 
 def cleanup_database(db_manager, db_path):
     """Helper function to safely cleanup database resources on all platforms"""
+    import time
+    import gc
+    
+    # Close the database manager
     db_manager.close()
+    
+    # Reset the singleton instance to ensure clean state for next test
+    DatabaseManager.reset_instance()
+    
+    # Force garbage collection to ensure all references are released
+    gc.collect()
+    
+    # On Windows, we may need multiple attempts and longer waits
     if db_path.exists():
-        try:
-            db_path.unlink()
-        except PermissionError:
-            # Windows may need a brief wait
-            import time
-            time.sleep(0.1)
-            db_path.unlink()
+        max_attempts = 10
+        wait_time = 0.1
+        
+        for attempt in range(max_attempts):
+            try:
+                db_path.unlink()
+                break
+            except PermissionError:
+                if attempt < max_attempts - 1:
+                    time.sleep(wait_time)
+                    wait_time *= 1.5  # Exponential backoff
+                    gc.collect()  # Try garbage collection again
+                else:
+                    # Last attempt failed, but don't fail the test
+                    # Log warning if we had a logger, but for now just continue
+                    print(f"Warning: Could not delete database file {db_path} after {max_attempts} attempts")
+                    break
 
 
 class TestEndToEndScanning:
@@ -102,14 +124,20 @@ class TestEndToEndScanning:
                 # 修改文件
                 original_content = small_file.read_text()
                 
-                # Add a small delay to ensure timestamp difference on all platforms
+                # Add a longer delay to ensure timestamp difference on Windows
                 import time
-                time.sleep(0.1)
+                time.sleep(1.0)  # Increase delay significantly for Windows
                 
                 small_file.write_text(original_content + "\nmodified")
                 
                 # Ensure the file system has time to update timestamps
-                time.sleep(0.1)
+                time.sleep(0.5)
+                
+                # Force a new timestamp by getting current time
+                import os
+                # Update access and modification times to ensure change is detected
+                current_time = time.time()
+                os.utime(small_file, (current_time, current_time))
 
                 # 再次扫描
                 mock_settings.SCANNED = datetime.now()  # 更新扫描时间
@@ -126,7 +154,15 @@ class TestEndToEndScanning:
 
                     # 应该有至少一个 MOD 操作
                     operations = [f.operation for f in files]
-                    assert "MOD" in operations
+                    
+                    # Add debugging information for Windows
+                    if "MOD" not in operations:
+                        print(f"DEBUG: File operations found: {operations}")
+                        print(f"DEBUG: Number of file records: {len(files)}")
+                        for i, file_record in enumerate(files):
+                            print(f"DEBUG: File {i}: operation={file_record.operation}, scanned={file_record.scanned}")
+                    
+                    assert "MOD" in operations, f"Expected 'MOD' operation but found: {operations}"
 
         # 清理
         cleanup_database(db_manager, db_path)
@@ -214,8 +250,7 @@ class TestEndToEndScanning:
         assert retrieved_file.machine == "persistence_test"
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager2, db_path)
 
 
 class TestConcurrentScanning:
@@ -277,8 +312,7 @@ class TestConcurrentScanning:
             assert file_count == len(test_files)
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
     @pytest.mark.integration
     @pytest.mark.database
@@ -351,8 +385,7 @@ class TestConcurrentScanning:
             assert hash_count > 0
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
 
 class TestErrorRecovery:
@@ -396,8 +429,9 @@ class TestErrorRecovery:
             pass
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        # Reset singleton for corruption test
+        DatabaseManager.reset_instance()
+        cleanup_database(DatabaseManager(), db_path)
 
     @pytest.mark.integration
     @pytest.mark.filesystem
@@ -519,8 +553,7 @@ class TestDataIntegrity:
                 assert stored_hash.sha256 == current_hashes["sha256"]
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
     @pytest.mark.integration
     @pytest.mark.database
@@ -583,8 +616,7 @@ class TestDataIntegrity:
             assert len(files_with_same_hash) == 2
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
 
 class TestMemoryUsage:
@@ -663,8 +695,7 @@ class TestMemoryUsage:
             assert processed_count == file_count
 
         # 清理
-        if db_path.exists():
-            db_path.unlink()
+        cleanup_database(db_manager, db_path)
 
 
 class TestBackupAndRestore:
@@ -711,6 +742,7 @@ class TestBackupAndRestore:
         assert restored_file.machine == "backup_test"
 
         # 清理
+        DatabaseManager.reset_instance()
+        dummy_manager = DatabaseManager()
         for db_path in [original_db_path, backup_db_path]:
-            if db_path.exists():
-                db_path.unlink()
+            cleanup_database(dummy_manager, db_path)
