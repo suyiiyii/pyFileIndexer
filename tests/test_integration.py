@@ -15,16 +15,25 @@ from database import DatabaseManager
 from models import FileHash, FileMeta
 
 
-def cleanup_database(db_manager, db_path):
-    """Helper function to safely cleanup database resources on all platforms"""
+def cleanup_database(db_manager, db_path, reset_singleton=True):
+    """Helper function to safely cleanup database resources on all platforms
+    
+    Args:
+        db_manager: The database manager instance
+        db_path: Path to the database file
+        reset_singleton: Whether to reset the singleton instance (default True)
+                        Set to False for concurrent tests to avoid interference
+    """
     import time
     import gc
     
     # Close the database manager
     db_manager.close()
     
-    # Reset the singleton instance to ensure clean state for next test
-    DatabaseManager.reset_instance()
+    # Only reset singleton if explicitly requested and safe to do so
+    if reset_singleton:
+        # Reset the singleton instance to ensure clean state for next test
+        DatabaseManager.reset_instance()
     
     # Force garbage collection to ensure all references are released
     gc.collect()
@@ -312,7 +321,7 @@ class TestConcurrentScanning:
             assert file_count == len(test_files)
 
         # 清理
-        cleanup_database(db_manager, db_path)
+        cleanup_database(db_manager, db_path, reset_singleton=False)
 
     @pytest.mark.integration
     @pytest.mark.database
@@ -385,7 +394,7 @@ class TestConcurrentScanning:
             assert hash_count > 0
 
         # 清理
-        cleanup_database(db_manager, db_path)
+        cleanup_database(db_manager, db_path, reset_singleton=False)
 
 
 class TestErrorRecovery:
