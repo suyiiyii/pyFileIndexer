@@ -1,0 +1,62 @@
+# Version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv
+.env
+
+# Database files and logs
+*.db
+*.log
+
+# Test artifacts
+.pytest_cache
+tests/
+test_*
+*_test.py
+
+# Benchmarking and CI files
+benchmark.py
+benchmark_results/
+BENCHMARK.md
+CI_BENCHMARK.md
+
+# Development and editor files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (unless needed in container)
+README.md
+
+# Configuration secrets
+.secrets.*
+
+# Build artifacts
+build/
+dist/
+*.egg-info
+
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# IDE and system files
+.claude/
+
+# Frontend build files
+node_modules/
+dist/
+build/
