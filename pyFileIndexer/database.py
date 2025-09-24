@@ -204,6 +204,8 @@ class DatabaseManager:
                 existing_file.scanned = file.scanned
                 existing_file.operation = file.operation
                 existing_file.machine = file.machine
+                existing_file.is_archived = getattr(file, 'is_archived', 0)
+                existing_file.archive_path = getattr(file, 'archive_path', None)
 
                 if hash is not None:
                     # 如果哈希信息已经存在，则直接使用已有的哈希信息
@@ -252,6 +254,10 @@ class DatabaseManager:
                             (FileHash.sha1 == hash_value) |
                             (FileHash.sha256 == hash_value)
                         )
+                    if filters.get('is_archived') is not None:
+                        query = query.filter(FileMeta.is_archived == filters['is_archived'])
+                    if filters.get('archive_path'):
+                        query = query.filter(FileMeta.archive_path.contains(filters['archive_path']))
 
                 # 计算总数
                 total = query.count()
@@ -477,7 +483,6 @@ class DatabaseManager:
 
             # 5. 准备文件数据并设置hash_id
             files_to_insert = []
-            files_to_update = []
 
             # 处理新文件
             for file_meta, file_hash, hash_dict in new_files:
@@ -492,7 +497,9 @@ class DatabaseManager:
                     'modified': file_meta.modified,
                     'scanned': file_meta.scanned,
                     'operation': file_meta.operation,
-                    'hash_id': hash_id
+                    'hash_id': hash_id,
+                    'is_archived': getattr(file_meta, 'is_archived', 0),
+                    'archive_path': getattr(file_meta, 'archive_path', None)
                 }
                 files_to_insert.append(file_dict)
 
@@ -511,6 +518,8 @@ class DatabaseManager:
                     existing_file.operation = file_meta.operation
                     existing_file.machine = file_meta.machine
                     existing_file.hash_id = hash_id
+                    existing_file.is_archived = getattr(file_meta, 'is_archived', 0)
+                    existing_file.archive_path = getattr(file_meta, 'archive_path', None)
                 else:
                     # 如果文件不存在，添加为新文件
                     file_dict = {
@@ -521,7 +530,9 @@ class DatabaseManager:
                         'modified': file_meta.modified,
                         'scanned': file_meta.scanned,
                         'operation': file_meta.operation,
-                        'hash_id': hash_id
+                        'hash_id': hash_id,
+                        'is_archived': getattr(file_meta, 'is_archived', 0),
+                        'archive_path': getattr(file_meta, 'archive_path', None)
                     }
                     files_to_insert.append(file_dict)
 

@@ -12,6 +12,7 @@ from config import settings
 from database import db_manager
 from models import FileHash, FileMeta
 from tqdm import tqdm
+from archive_scanner import is_archive_file, create_archive_scanner, calculate_hash_from_data
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -186,6 +187,71 @@ def scan_file(file: Path):
 
     # 添加到批量处理队列
     batch_processor.add_file(meta, file_hash, meta.operation)
+
+    # 如果启用了压缩包扫描并且是压缩包文件，扫描内部文件
+    if getattr(settings, "SCAN_ARCHIVES", True) and is_archive_file(file):
+        scan_archive_file(file)
+
+
+def scan_archive_file(archive_path: Path):
+    """扫描压缩包内的文件"""
+    logger.info(f"Scanning archive: {archive_path}")
+
+    # 检查压缩包大小限制
+    max_size = getattr(settings, "MAX_ARCHIVE_SIZE", 500 * 1024 * 1024)  # 默认500MB
+    if archive_path.stat().st_size > max_size:
+        logger.warning(f"Skipping large archive: {archive_path} ({archive_path.stat().st_size} bytes)")
+        return
+
+    max_archive_file_size = getattr(settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024)
+    scanner = create_archive_scanner(archive_path, max_archive_file_size)
+    if not scanner:
+        logger.warning(f"Cannot create scanner for archive: {archive_path}")
+        return
+
+    try:
+        machine = getattr(settings, "MACHINE_NAME", "localhost")
+        scanned = getattr(settings, "SCANNED", datetime.datetime.now())
+
+        for entry in scanner.scan_entries():
+            try:
+                # 检查虚拟路径是否已存在
+                virtual_path = scanner.create_virtual_path(entry.name)
+                existing_result = db_manager.get_file_with_hash_by_path(virtual_path)
+
+                # 创建文件元数据
+                file_meta = scanner.create_file_meta(entry, machine, scanned)
+                file_meta.operation = "ADD"  # type: ignore[attr-defined]
+
+                if existing_result:
+                    # 文件已存在，检查是否需要更新
+                    existing_meta, existing_hash = existing_result
+                    if (existing_hash and entry.size == getattr(existing_hash, "size", None) and
+                        getattr(file_meta, "modified", None) == getattr(existing_meta, "modified", None)):
+                        logger.debug(f"Skipping unchanged archived file: {virtual_path}")
+                        continue
+                    file_meta.operation = "MOD"  # type: ignore[attr-defined]
+
+                # 计算文件哈希
+                try:
+                    data = entry.read_data()
+                    hashes = calculate_hash_from_data(data)
+                    file_hash = FileHash(**hashes, size=entry.size)
+
+                    # 添加到批量处理队列
+                    batch_processor.add_file(file_meta, file_hash, file_meta.operation)
+                    logger.debug(f"Added archived file: {virtual_path}")
+
+                except Exception as e:
+                    logger.error(f"Error processing archived file {entry.name}: {e}")
+                    continue
+
+            except Exception as e:
+                logger.error(f"Error processing archive entry {entry.name}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"Error scanning archive {archive_path}: {e}")
 
 
 def scan_file_worker(

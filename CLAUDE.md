@@ -77,3 +77,29 @@ The `.ignore` file controls which paths to skip:
 - `file_meta` table: File metadata with foreign key to hash
 - Indexed columns for efficient lookups: hashes, file names, paths
 - Operation tracking: ADD for new files, MOD for modified files
+- Archive support: `is_archived` field (0/1) and `archive_path` field for compressed file handling
+
+## Archive Scanning
+
+### Supported Formats
+- ZIP (.zip)
+- TAR (.tar, .tar.gz, .tgz, .tar.bz2, .tbz2, .tar.xz, .txz)
+- RAR (.rar)
+
+### Configuration
+Add these settings to `settings.toml`:
+```toml
+# Archive scanning configuration
+scan_archives = true  # Enable/disable archive scanning
+max_archive_size = 524288000  # Maximum archive size (500MB)
+max_archive_file_size = 104857600  # Maximum size for files within archives (100MB)
+```
+
+### Virtual Paths
+Files within archives use virtual path format: `archive_path::internal_file_path`
+
+Example: `/path/to/archive.zip::folder/file.txt`
+
+### Database Fields
+- `is_archived`: 1 for files within archives, 0 for regular files
+- `archive_path`: Full path to the containing archive (NULL for regular files)

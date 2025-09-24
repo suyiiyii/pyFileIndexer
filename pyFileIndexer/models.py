@@ -37,3 +37,7 @@ class FileMeta(Base):
     scanned = Column(DateTime, index=True)
     # 操作，添加索引用于按操作类型过滤
     operation = Column(String, index=True)
+    # 是否来自压缩包，索引用于过滤
+    is_archived = Column(Integer, index=True, default=0)
+    # 压缩包路径，索引用于关联查询
+    archive_path = Column(String, index=True)
