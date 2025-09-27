@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Input, Select, Button, Table, Space, Tag, message } from 'antd';
+import { Card, Input, Select, Button, Table, Tag, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
@@ -226,14 +226,14 @@ const SearchPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <Card title="文件搜索" style={{ marginBottom: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Space wrap>
+    <div className="space-y-6">
+      <Card title="文件搜索" className="shadow-sm">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-4">
             <Select
               value={searchType}
               onChange={setSearchType}
-              style={{ width: 120 }}
+              className="w-32"
             >
               <Option value="name">文件名</Option>
               <Option value="path">路径</Option>
@@ -244,7 +244,7 @@ const SearchPage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={handleKeyPress}
-              style={{ width: 400 }}
+              className="flex-1 min-w-80"
             />
             <Button
               type="primary"
@@ -254,32 +254,37 @@ const SearchPage: React.FC = () => {
             >
               搜索
             </Button>
-          </Space>
+          </div>
 
           {searchType === 'hash' && (
-            <div style={{ color: '#666', fontSize: '12px' }}>
+            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
               提示：哈希值搜索支持部分匹配，可以输入 MD5、SHA1 或 SHA256 的一部分
             </div>
           )}
-        </Space>
+        </div>
       </Card>
 
       {searchResults.length > 0 && (
-        <Card title={`搜索结果 (${searchResults.length} 个文件)`}>
-          <Table
-            columns={columns}
-            dataSource={searchResults}
-            rowKey={(record) => `${record.meta.id || record.meta.path}`}
-            loading={loading}
-            pagination={{
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-              pageSizeOptions: ['10', '20', '50', '100'],
-            }}
-            scroll={{ x: 1600 }}
-            size="small"
-          />
+        <Card title={`搜索结果 (${searchResults.length} 个文件)`} className="shadow-sm">
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <div className="overflow-x-auto">
+              <Table
+                columns={columns}
+                dataSource={searchResults}
+                rowKey={(record) => `${record.meta.id || record.meta.path}`}
+                loading={loading}
+                pagination={{
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+                  pageSizeOptions: ['10', '20', '50', '100'],
+                }}
+                scroll={{ x: 1600 }}
+                size="small"
+                className="min-w-full"
+              />
+            </div>
+          </div>
         </Card>
       )}
     </div>

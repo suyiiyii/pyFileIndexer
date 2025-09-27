@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Collapse, message, Button } from 'antd';
+import { Card, Statistic, Table, Tag, Collapse, message, Button } from 'antd';
 import { FileOutlined, HddOutlined, CopyOutlined, DesktopOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
@@ -127,111 +127,103 @@ const Dashboard: React.FC = () => {
     : [];
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>系统统计</h2>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-semibold text-gray-800 m-0">系统统计</h2>
         <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading || duplicatesLoading}>
           刷新数据
         </Button>
       </div>
 
       {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="总文件数"
-              value={statistics?.total_files || 0}
-              prefix={<FileOutlined />}
-              formatter={(value) => value?.toLocaleString()}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="总大小"
-              value={statistics?.total_size || 0}
-              prefix={<HddOutlined />}
-              formatter={(value) => formatFileSize(Number(value))}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="重复文件组"
-              value={statistics?.duplicate_files || 0}
-              prefix={<CopyOutlined />}
-              formatter={(value) => value?.toLocaleString()}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="机器数量"
-              value={Object.keys(statistics?.machine_stats || {}).length}
-              prefix={<DesktopOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card loading={loading} className="hover:shadow-md transition-shadow">
+          <Statistic
+            title="总文件数"
+            value={statistics?.total_files || 0}
+            prefix={<FileOutlined />}
+            formatter={(value) => value?.toLocaleString()}
+          />
+        </Card>
+        <Card loading={loading} className="hover:shadow-md transition-shadow">
+          <Statistic
+            title="总大小"
+            value={statistics?.total_size || 0}
+            prefix={<HddOutlined />}
+            formatter={(value) => formatFileSize(Number(value))}
+          />
+        </Card>
+        <Card loading={loading} className="hover:shadow-md transition-shadow">
+          <Statistic
+            title="重复文件组"
+            value={statistics?.duplicate_files || 0}
+            prefix={<CopyOutlined />}
+            formatter={(value) => value?.toLocaleString()}
+          />
+        </Card>
+        <Card loading={loading} className="hover:shadow-md transition-shadow">
+          <Statistic
+            title="机器数量"
+            value={Object.keys(statistics?.machine_stats || {}).length}
+            prefix={<DesktopOutlined />}
+          />
+        </Card>
+      </div>
 
       {/* 按机器统计 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={12}>
-          <Card title="按机器统计" loading={loading}>
-            <Table
-              columns={machineStatsColumns}
-              dataSource={machineStatsData}
-              rowKey="machine"
-              size="small"
-              pagination={false}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card title="重复文件概览" loading={duplicatesLoading}>
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1890ff' }}>
-                {duplicates.length}
-              </div>
-              <div style={{ color: '#666' }}>个重复文件组</div>
-              <div style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
-                总计 {duplicates.reduce((sum, group) => sum + group.files.length, 0)} 个重复文件
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card title="按机器统计" loading={loading} className="hover:shadow-md transition-shadow">
+          <Table
+            columns={machineStatsColumns}
+            dataSource={machineStatsData}
+            rowKey="machine"
+            size="small"
+            pagination={false}
+            className="overflow-auto"
+          />
+        </Card>
+        <Card title="重复文件概览" loading={duplicatesLoading} className="hover:shadow-md transition-shadow">
+          <div className="text-center py-5">
+            <div className="text-2xl font-bold text-blue-600">
+              {duplicates.length}
             </div>
-          </Card>
-        </Col>
-      </Row>
+            <div className="text-gray-600">个重复文件组</div>
+            <div className="mt-2 text-xs text-gray-400">
+              总计 {duplicates.reduce((sum, group) => sum + group.files.length, 0)} 个重复文件
+            </div>
+          </div>
+        </Card>
+      </div>
 
       {/* 重复文件详情 */}
       {duplicates.length > 0 && (
-        <Card title="重复文件详情" loading={duplicatesLoading}>
-          <Collapse>
+        <Card title="重复文件详情" loading={duplicatesLoading} className="hover:shadow-md transition-shadow">
+          <Collapse className="bg-gray-50">
             {duplicates.map((group, index) => (
               <Panel
                 header={
-                  <div>
+                  <div className="flex items-center space-x-2">
                     <Tag color="orange">{group.files.length} 个文件</Tag>
-                    <span style={{ marginLeft: 8 }}>
-                      MD5: <code style={{ fontSize: '12px' }}>{group.hash}</code>
+                    <span className="text-sm">
+                      MD5: <code className="text-xs bg-gray-100 px-1 rounded">{group.hash}</code>
                     </span>
-                    <span style={{ marginLeft: 8, color: '#666' }}>
+                    <span className="text-gray-600 text-sm">
                       大小: {formatFileSize(group.files[0]?.hash?.size || 0)}
                     </span>
                   </div>
                 }
                 key={index}
               >
-                <Table
-                  columns={duplicateFileColumns}
-                  dataSource={group.files}
-                  rowKey={(record) => `${record.meta.id || record.meta.path}`}
-                  size="small"
-                  pagination={false}
-                />
+                <div className="overflow-x-auto">
+                  <Table
+                    columns={duplicateFileColumns}
+                    dataSource={group.files}
+                    rowKey={(record) => `${record.meta.id || record.meta.path}`}
+                    size="small"
+                    pagination={false}
+                    className="min-w-full"
+                  />
+                </div>
               </Panel>
             ))}
           </Collapse>

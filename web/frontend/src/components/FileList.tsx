@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, InputNumber, Button, Space, Tag, message } from 'antd';
+import { Table, Card, Input, InputNumber, Button, Tag, message } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
@@ -111,7 +111,7 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
         page,
         per_page: pageSize,
         ...Object.fromEntries(
-          Object.entries(searchParams).filter(([_, value]) =>
+          Object.entries(searchParams).filter(([, value]) =>
             value !== '' && value !== undefined
           )
         ),
@@ -134,6 +134,7 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
 
   useEffect(() => {
     fetchFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSearch = () => {
@@ -152,87 +153,92 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
     setTimeout(() => fetchFiles(1, pagination.pageSize), 0);
   };
 
-  const handleTableChange = (paginationConfig: any) => {
-    fetchFiles(paginationConfig.current, paginationConfig.pageSize);
+  const handleTableChange = (paginationConfig: { current?: number; pageSize?: number }) => {
+    fetchFiles(paginationConfig.current || 1, paginationConfig.pageSize || 20);
   };
 
   return (
-    <Card title={title}>
+    <Card title={title} className="shadow-sm">
       {/* 搜索区域 */}
-      <div style={{ marginBottom: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Space wrap>
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input
               placeholder="文件名"
               value={searchParams.name}
               onChange={(e) => setSearchParams({ ...searchParams, name: e.target.value })}
-              style={{ width: 200 }}
+              className="w-full"
             />
             <Input
               placeholder="路径"
               value={searchParams.path}
               onChange={(e) => setSearchParams({ ...searchParams, path: e.target.value })}
-              style={{ width: 300 }}
+              className="w-full md:col-span-2"
             />
             <Input
               placeholder="机器名"
               value={searchParams.machine}
               onChange={(e) => setSearchParams({ ...searchParams, machine: e.target.value })}
-              style={{ width: 150 }}
+              className="w-full"
             />
-          </Space>
+          </div>
 
-          <Space wrap>
-            <span>文件大小：</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-center">
+            <span className="text-sm font-medium text-gray-700">文件大小：</span>
             <InputNumber
               placeholder="最小大小(字节)"
               value={searchParams.min_size}
               onChange={(value) => setSearchParams({ ...searchParams, min_size: value || undefined })}
-              style={{ width: 150 }}
+              className="w-full"
             />
-            <span>至</span>
+            <span className="text-sm text-gray-500 text-center">至</span>
             <InputNumber
               placeholder="最大大小(字节)"
               value={searchParams.max_size}
               onChange={(value) => setSearchParams({ ...searchParams, max_size: value || undefined })}
-              style={{ width: 150 }}
+              className="w-full"
             />
             <Input
               placeholder="哈希值(MD5/SHA1/SHA256)"
               value={searchParams.hash_value}
               onChange={(e) => setSearchParams({ ...searchParams, hash_value: e.target.value })}
-              style={{ width: 300 }}
+              className="w-full"
             />
-          </Space>
+          </div>
 
-          <Space>
+          <div className="flex flex-wrap gap-3">
             <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
               搜索
             </Button>
             <Button icon={<ReloadOutlined />} onClick={handleReset}>
               重置
             </Button>
-          </Space>
-        </Space>
+          </div>
+        </div>
       </div>
 
       {/* 文件表格 */}
-      <Table
-        columns={columns}
-        dataSource={files}
-        rowKey={(record) => `${record.meta.id || record.meta.path}`}
-        loading={loading}
-        pagination={{
-          ...pagination,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-        }}
-        onChange={handleTableChange}
-        scroll={{ x: 1400 }}
-        size="small"
-      />
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="overflow-x-auto">
+          <Table
+            columns={columns}
+            dataSource={files}
+            rowKey={(record) => `${record.meta.id || record.meta.path}`}
+            loading={loading}
+            pagination={{
+              ...pagination,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+              pageSizeOptions: ['10', '20', '50', '100'],
+            }}
+            onChange={handleTableChange}
+            scroll={{ x: 1400 }}
+            size="small"
+            className="min-w-full"
+          />
+        </div>
+      </div>
     </Card>
   );
 };
