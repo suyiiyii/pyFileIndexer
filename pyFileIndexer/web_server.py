@@ -257,8 +257,8 @@ def start_web_server(db_path: str, host: str, port: int):
         logger.info("请手动构建前端：")
         frontend_path = project_root / "frontend"
         logger.info(f"  cd {frontend_path}")
-        logger.info("  npm install")
-        logger.info("  npm run build")
+        logger.info("  pnpm install")
+        logger.info("  pnpm run build")
         sys.exit(1)
 
     try:

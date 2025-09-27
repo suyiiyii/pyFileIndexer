@@ -5,13 +5,19 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
+# 安装 pnpm
+RUN npm install -g pnpm
+
 # 复制前端项目配置文件
 COPY ./frontend/package*.json ./
+COPY ./frontend/pnpm-lock.yaml ./
 COPY ./frontend/tsconfig*.json ./
 COPY ./frontend/vite.config.ts ./
+COPY ./frontend/tailwind.config.js ./
+COPY ./frontend/eslint.config.js ./
 
 # 安装前端依赖（包括开发依赖，构建时需要）
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
 # 复制前端源码并构建
 COPY ./frontend/src ./src
@@ -19,7 +25,7 @@ COPY ./frontend/index.html ./
 COPY ./frontend/public ./public
 
 # 构建前端
-RUN npm run build
+RUN pnpm run build
 
 # ============================================================================
 # 阶段 2: 最终运行阶段

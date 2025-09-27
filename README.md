@@ -138,8 +138,8 @@ uv run python pyFileIndexer/main.py --web --db_path files.db --port 8000
 
 ```bash
 cd frontend
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ## TODO

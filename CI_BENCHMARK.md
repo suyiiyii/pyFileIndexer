@@ -141,7 +141,7 @@ git push origin v1.0.0
    - 检查 `psutil` 依赖是否正确安装
 
 3. **前端构建失败**
-   - 检查 `frontend/package.json` 文件
+   - 检查 `frontend/package.json` 和 `frontend/pnpm-lock.yaml` 文件
    - 确保 Node.js 版本兼容
 
 4. **权限问题**
