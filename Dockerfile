@@ -6,17 +6,17 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 
 # 复制前端项目配置文件
-COPY ./web/frontend/package*.json ./
-COPY ./web/frontend/tsconfig*.json ./
-COPY ./web/frontend/vite.config.ts ./
+COPY ./frontend/package*.json ./
+COPY ./frontend/tsconfig*.json ./
+COPY ./frontend/vite.config.ts ./
 
 # 安装前端依赖（包括开发依赖，构建时需要）
 RUN npm ci
 
 # 复制前端源码并构建
-COPY ./web/frontend/src ./src
-COPY ./web/frontend/index.html ./
-COPY ./web/frontend/public ./public
+COPY ./frontend/src ./src
+COPY ./frontend/index.html ./
+COPY ./frontend/public ./public
 
 # 构建前端
 RUN npm run build
@@ -35,10 +35,10 @@ RUN uv sync --frozen
 
 # 复制应用代码
 COPY ./pyFileIndexer ./pyFileIndexer
-COPY ./web/backend ./web/backend
+# 后端代码已合并到pyFileIndexer目录中
 
 # 从前端构建阶段复制构建产物
-COPY --from=frontend-builder /app/frontend/dist ./web/frontend/dist
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 创建非 root 用户并设置缓存目录权限
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser && \

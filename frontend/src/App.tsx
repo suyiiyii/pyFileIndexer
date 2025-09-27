@@ -90,7 +90,7 @@ const AppContent: React.FC = () => {
                 onClick={() => setCollapsed(!collapsed)}
               />
             )}
-            <h1 className="text-xl font-semibold text-gray-800 m-0">文件索引系统</h1>
+            <h1 className="text-xl font-semibold text-gray-300 m-0">文件索引系统</h1>
           </div>
         </Header>
         <Content className="m-6 overflow-auto">

@@ -118,10 +118,34 @@ __pycache__
 2. **内存使用**：扫描过程使用内存数据库，大规模扫描时请注意内存占用
 3. **中断处理**：支持 Ctrl+C 安全中断，数据会在中断时落盘保存
 
+## Web UI 界面
+
+项目提供了基于 React 的 Web 界面，支持文件搜索、统计查看和重复文件检测。
+
+### 启动 Web 界面
+
+```bash
+# 确保已扫描文件并生成数据库
+uv run python pyFileIndexer/main.py /path/to/scan --db_path files.db
+
+# 启动 Web 服务器
+uv run python pyFileIndexer/main.py --web --db_path files.db --port 8000
+```
+
+### 前端构建
+
+如果前端未构建，需要手动构建：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 ## TODO
 
 - [ ] 支持多数据库合并
-- [ ] Web UI 界面
+- [x] Web UI 界面
 - [ ] 增量更新模式
 - [ ] 文件夹级别索引
 - [ ] 导出报告功能
