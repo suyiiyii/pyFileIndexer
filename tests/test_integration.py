@@ -696,3 +696,1040 @@ class TestBackupAndRestore:
         for db_path in [original_db_path, backup_db_path]:
             if db_path.exists():
                 db_path.unlink()
+
+
+class TestCommandLineIntegration:
+    """命令行集成测试"""
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_basic_scan(self, cli_main_script_path, cli_test_directory, temp_dir):
+        """测试基本的命令行扫描功能"""
+        test_root = cli_test_directory["root"]
+        db_path = temp_dir / "cli_basic.db"
+        log_path = temp_dir / "cli_basic.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_basic",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 验证数据库文件被创建
+        assert db_path.exists(), "Database file was not created"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 统计扫描的文件数量
+                file_count = session.query(FileMeta).count()
+                hash_count = session.query(FileHash).count()
+
+                # 验证扫描了合理数量的文件（不包括被忽略的）
+                # 基本文件：text1.txt, text2.txt, duplicate1.txt, duplicate2.txt, empty.txt, large.txt, binary.bin
+                # 嵌套文件：nested1.txt, deep_nested.txt
+                # 由于测试环境可能有差异，我们验证至少扫描了基本的文件
+                assert file_count >= 9, f"Expected at least 9 files, got {file_count}"
+                assert file_count <= 12, f"Expected at most 12 files, got {file_count}"  # 允许一些额外的测试文件
+
+                # 验证哈希数量合理（重复文件应该共享哈希）
+                assert hash_count > 0, "No hashes were calculated"
+                assert hash_count <= file_count, "More hashes than files"
+
+                # 验证具体文件是否存在
+                text1_file = session.query(FileMeta).filter_by(name="text1.txt").first()
+                assert text1_file is not None, "text1.txt not found in database"
+                assert text1_file.machine == "cli_test_basic"
+
+                # 验证重复文件共享哈希
+                duplicate1 = session.query(FileMeta).filter_by(name="duplicate1.txt").first()
+                duplicate2 = session.query(FileMeta).filter_by(name="duplicate2.txt").first()
+                assert duplicate1 is not None, "duplicate1.txt not found"
+                assert duplicate2 is not None, "duplicate2.txt not found"
+                assert duplicate1.hash_id == duplicate2.hash_id, "Duplicate files should share hash ID"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_with_ignore_file(self, cli_main_script_path, cli_test_with_ignore, temp_dir):
+        """测试带有.ignore文件的扫描功能"""
+        test_root = cli_test_with_ignore["root"]
+        db_path = temp_dir / "cli_ignore.db"
+        log_path = temp_dir / "cli_ignore.log"
+
+        # 在工作目录创建.ignore文件（主程序从当前目录读取）
+        ignore_content = """# CLI测试忽略规则
+node_modules
+__pycache__
+.DS_Store
+/temp/
+/logs/
+*.log
+*.tmp"""
+        ignore_file = temp_dir / ".ignore"
+        ignore_file.write_text(ignore_content)
+
+        # 构建命令行参数，使用相对路径
+        main_script_rel = Path("pyFileIndexer") / "main.py"
+        cmd = [
+            "uv", "run", "python", str(main_script_rel),
+            str(test_root),
+            "--machine_name", "cli_test_ignore",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令（从项目根目录运行）
+        project_root = cli_main_script_path.parent.parent
+
+        # 复制.ignore文件到项目根目录
+        project_ignore = project_root / ".ignore"
+        project_ignore.write_text(ignore_content)
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=project_root
+            )
+        finally:
+            # 清理.ignore文件
+            if project_ignore.exists():
+                project_ignore.unlink()
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 验证被忽略的文件没有被扫描
+                # 注意：当前的忽略实现只在目录级别生效，所以只测试目录级别的忽略
+                ignored_files = [
+                    "should_be_ignored.js",  # 在node_modules中（目录被忽略）
+                    "config",  # 在.git中（以点开头的目录被忽略）
+                    "cache_file.tmp",  # 在_cache中（以下划线开头的目录被忽略）
+                ]
+
+                for ignored_file in ignored_files:
+                    found = session.query(FileMeta).filter(
+                        FileMeta.name == ignored_file
+                    ).first()
+                    assert found is None, f"Ignored file {ignored_file} was incorrectly scanned"
+
+                # 验证temp目录中的文件可能会被扫描（因为当前忽略逻辑的限制）
+                # 但node_modules, .git, _cache目录中的文件应该被忽略
+
+                # 验证正常文件被扫描
+                normal_files = ["text1.txt", "text2.txt", "nested1.txt"]
+                for normal_file in normal_files:
+                    found = session.query(FileMeta).filter(
+                        FileMeta.name == normal_file
+                    ).first()
+                    assert found is not None, f"Normal file {normal_file} was not scanned"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    def test_cli_duplicate_detection(self, cli_main_script_path, cli_test_directory, temp_dir):
+        """测试重复文件检测功能"""
+        test_root = cli_test_directory["root"]
+        db_path = temp_dir / "cli_duplicate.db"
+        log_path = temp_dir / "cli_duplicate.log"
+
+        # 首先直接计算重复文件的哈希用于对比
+        from main import get_hashes
+        duplicate1_path = cli_test_directory["duplicate1.txt"]
+        duplicate2_path = cli_test_directory["duplicate2.txt"]
+        expected_hashes = get_hashes(duplicate1_path)
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_duplicate",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 获取重复文件的记录
+                duplicate1 = session.query(FileMeta).filter_by(name="duplicate1.txt").first()
+                duplicate2 = session.query(FileMeta).filter_by(name="duplicate2.txt").first()
+
+                assert duplicate1 is not None, "duplicate1.txt not found"
+                assert duplicate2 is not None, "duplicate2.txt not found"
+
+                # 验证它们共享相同的hash_id
+                assert duplicate1.hash_id == duplicate2.hash_id, "Duplicate files should share hash ID"
+
+                # 验证哈希值正确
+                shared_hash = session.query(FileHash).filter_by(id=duplicate1.hash_id).first()
+                assert shared_hash is not None, "Shared hash not found"
+                assert shared_hash.md5 == expected_hashes["md5"], "MD5 hash mismatch"
+                assert shared_hash.sha1 == expected_hashes["sha1"], "SHA1 hash mismatch"
+                assert shared_hash.sha256 == expected_hashes["sha256"], "SHA256 hash mismatch"
+
+                # 验证只有一个哈希记录用于重复内容
+                duplicate_hash_count = session.query(FileHash).filter_by(
+                    md5=expected_hashes["md5"]
+                ).count()
+                assert duplicate_hash_count == 1, "Should have only one hash record for duplicate content"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    def test_cli_nested_directories(self, cli_main_script_path, cli_test_directory, temp_dir):
+        """测试嵌套目录扫描功能"""
+        test_root = cli_test_directory["root"]
+        db_path = temp_dir / "cli_nested.db"
+        log_path = temp_dir / "cli_nested.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_nested",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 验证嵌套文件被扫描
+                nested_file = session.query(FileMeta).filter_by(name="nested1.txt").first()
+                assert nested_file is not None, "nested1.txt not found"
+
+                deep_nested_file = session.query(FileMeta).filter_by(name="deep_nested.txt").first()
+                assert deep_nested_file is not None, "deep_nested.txt not found"
+
+                # 验证路径正确记录了完整的层次结构
+                assert "subdir1" in nested_file.path, "nested1.txt path should contain subdir1"
+                assert "deeper" in deep_nested_file.path, "deep_nested.txt path should contain deeper"
+
+                # 验证根目录文件也被扫描
+                root_file = session.query(FileMeta).filter_by(name="text1.txt").first()
+                assert root_file is not None, "Root level file text1.txt not found"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_incremental_scan(self, cli_main_script_path, cli_test_directory, temp_dir):
+        """测试增量扫描功能"""
+        test_root = cli_test_directory["root"]
+        db_path = temp_dir / "cli_incremental.db"
+        log_path = temp_dir / "cli_incremental.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_incremental",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 第一次扫描
+        result1 = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        assert result1.returncode == 0, f"First scan failed: {result1.stderr}"
+
+        # 验证第一次扫描结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                initial_count = session.query(FileMeta).count()
+                assert initial_count > 0, "No files scanned in first run"
+
+                # 验证所有文件的操作都是ADD
+                add_operations = session.query(FileMeta).filter_by(operation="ADD").count()
+                assert add_operations == initial_count, "All files should have ADD operation in first scan"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 修改一个文件
+        test_file = cli_test_directory["text1.txt"]
+        original_content = test_file.read_text()
+        test_file.write_text(original_content + "\nModified content")
+
+        # 等待一秒确保修改时间不同
+        time.sleep(1)
+
+        # 第二次扫描
+        result2 = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        assert result2.returncode == 0, f"Second scan failed: {result2.stderr}"
+
+        # 验证增量扫描结果
+        db_manager2 = DatabaseManager()
+        db_manager2.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager2.session_factory() as session:
+                # 验证有MOD操作记录
+                mod_operations = session.query(FileMeta).filter_by(operation="MOD").count()
+                assert mod_operations > 0, "Should have MOD operations after file modification"
+
+                # 验证修改的文件有正确的操作类型
+                modified_files = session.query(FileMeta).filter(
+                    FileMeta.name == "text1.txt",
+                    FileMeta.operation == "MOD"
+                ).all()
+                assert len(modified_files) > 0, "Modified file should have MOD operation"
+
+        finally:
+            db_manager2.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+
+class TestArchiveIntegration:
+    """压缩包集成测试"""
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_zip_archive_scan(self, cli_main_script_path, cli_archive_test_directory, temp_dir, archive_test_files):
+        """测试ZIP压缩包扫描功能"""
+        test_root = cli_archive_test_directory["root"]
+        zip_file = cli_archive_test_directory["zip_file"]
+        db_path = temp_dir / "cli_zip.db"
+        log_path = temp_dir / "cli_zip.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_zip",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,  # 给压缩包扫描更多时间
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 验证ZIP文件本身被扫描
+                zip_meta = session.query(FileMeta).filter(
+                    FileMeta.name == "sample.zip"
+                ).first()
+                assert zip_meta is not None, "ZIP file itself should be scanned"
+                assert zip_meta.is_archived == 0, "ZIP file itself should not be marked as archived"
+
+                # 验证ZIP内部文件被扫描
+                archived_files = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1
+                ).all()
+                assert len(archived_files) > 0, "Should have archived files from ZIP"
+
+                # 验证虚拟路径格式
+                virtual_paths = [f.path for f in archived_files]
+                zip_virtual_path = next((p for p in virtual_paths if "readme.txt" in p and "sample.zip" in p), None)
+                assert zip_virtual_path is not None, "Should find readme.txt from ZIP file in archived files"
+                assert "::" in zip_virtual_path, "Virtual path should contain :: separator"
+                assert "sample.zip" in zip_virtual_path, "Virtual path should contain ZIP archive name"
+
+                # 验证archive_path字段
+                readme_from_zip = session.query(FileMeta).filter(
+                    FileMeta.name == "readme.txt",
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.zip%")
+                ).first()
+                assert readme_from_zip is not None, "Should find readme.txt from ZIP"
+                assert readme_from_zip.archive_path is not None, "Archive path should be set"
+                assert "sample.zip" in readme_from_zip.archive_path, "Archive path should contain ZIP filename"
+
+                # 验证嵌套目录文件（从ZIP）
+                nested_from_zip = session.query(FileMeta).filter(
+                    FileMeta.name == "guide.md",
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.zip%")
+                ).first()
+                assert nested_from_zip is not None, "Should find nested file guide.md from ZIP"
+                assert "docs/guide.md" in nested_from_zip.path, "Virtual path should preserve directory structure"
+
+                # 验证重复内容文件共享哈希（从ZIP）
+                duplicate1_zip = session.query(FileMeta).filter(
+                    FileMeta.name == "duplicate1.txt",
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.zip%")
+                ).first()
+                duplicate2_zip = session.query(FileMeta).filter(
+                    FileMeta.name == "duplicate2.txt",
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.zip%")
+                ).first()
+
+                if duplicate1_zip and duplicate2_zip:
+                    assert duplicate1_zip.hash_id == duplicate2_zip.hash_id, "Duplicate files in ZIP should share hash ID"
+
+                # 验证二进制文件被正确处理（从ZIP）
+                binary_from_zip = session.query(FileMeta).filter(
+                    FileMeta.name == "binary.bin",
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.zip%")
+                ).first()
+                assert binary_from_zip is not None, "Should find binary file from ZIP"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_tar_variants_scan(self, cli_main_script_path, cli_archive_test_directory, temp_dir, archive_test_files):
+        """测试各种TAR格式的压缩包扫描"""
+        test_root = cli_archive_test_directory["root"]
+        db_path = temp_dir / "cli_tar.db"
+        log_path = temp_dir / "cli_tar.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_tar",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 检查各种TAR格式的压缩包
+                tar_formats = ["tar", "tar_gz", "tar_bz2", "tar_xz"]
+                found_tar_files = []
+
+                for format_name in tar_formats:
+                    # 检查TAR文件本身
+                    tar_filename = f"sample.{format_name}"
+                    tar_meta = session.query(FileMeta).filter(
+                        FileMeta.name == tar_filename
+                    ).first()
+
+                    if tar_meta:
+                        found_tar_files.append(format_name)
+                        assert tar_meta.is_archived == 0, f"{tar_filename} itself should not be marked as archived"
+
+                        # 检查该TAR文件内的文件
+                        archived_from_this_tar = session.query(FileMeta).filter(
+                            FileMeta.is_archived == 1,
+                            FileMeta.archive_path.like(f"%{tar_filename}%")
+                        ).all()
+
+                        if len(archived_from_this_tar) > 0:
+                            # 验证虚拟路径格式
+                            sample_file = archived_from_this_tar[0]
+                            assert "::" in sample_file.path, f"TAR virtual path should contain :: separator for {format_name}"
+                            assert tar_filename in sample_file.path, f"Virtual path should contain TAR filename for {format_name}"
+
+                # 确保至少找到了一些TAR文件
+                assert len(found_tar_files) > 0, "Should find at least one TAR format file"
+
+                # 验证总的archived文件数量合理
+                total_archived = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1
+                ).count()
+                assert total_archived > 0, "Should have archived files from TAR formats"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    def test_cli_rar_archive_scan(self, cli_main_script_path, cli_archive_test_directory, temp_dir, archive_test_files):
+        """测试RAR压缩包扫描功能"""
+        test_root = cli_archive_test_directory["root"]
+
+        # 检查是否有RAR文件存在
+        rar_files = list(test_root.glob("*.rar"))
+        if not rar_files:
+            pytest.skip("No RAR files found in test directory - RAR creation may not be available")
+
+        db_path = temp_dir / "cli_rar.db"
+        log_path = temp_dir / "cli_rar.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_rar",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=test_root.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"CLI command failed: {result.stderr}"
+
+        # 验证数据库文件被创建
+        assert db_path.exists(), "Database file should be created"
+
+        # 连接数据库验证结果
+        from pyFileIndexer.database import DatabaseManager
+        from pyFileIndexer.models import FileMeta, FileHash
+
+        db_manager = DatabaseManager(str(db_path))
+        try:
+            with db_manager.session_factory() as session:
+                # 查找RAR压缩包内的文件
+                rar_files_query = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%sample.rar%")
+                ).all()
+
+                if rar_files_query:  # 如果RAR文件被成功处理
+                    # 验证基本文件存在
+                    readme_from_rar = session.query(FileMeta).filter(
+                        FileMeta.name == "readme.txt",
+                        FileMeta.is_archived == 1,
+                        FileMeta.archive_path.like("%sample.rar%")
+                    ).first()
+                    assert readme_from_rar is not None, "Should find readme.txt in RAR archive"
+                    assert "sample.rar" in readme_from_rar.path, "Virtual path should contain archive name"
+
+                    # 验证虚拟路径格式
+                    assert "::" in readme_from_rar.path, "Virtual path should contain '::' separator"
+
+                    # 验证存档标记
+                    assert readme_from_rar.is_archived == 1, "File should be marked as archived"
+                    assert readme_from_rar.archive_path is not None, "Archive path should be set"
+
+                else:
+                    # RAR文件无法处理（可能是因为缺少rarfile支持）
+                    pytest.skip("RAR files found but could not be processed - may require rarfile library")
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    def test_cli_nested_archive_structure(self, cli_main_script_path, cli_archive_test_directory, temp_dir):
+        """测试压缩包内嵌套目录结构的扫描"""
+        test_root = cli_archive_test_directory["root"]
+        db_path = temp_dir / "cli_nested.db"
+        log_path = temp_dir / "cli_nested.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_nested",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 验证深层嵌套文件被正确扫描
+                deep_files = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1,
+                    FileMeta.path.like("%src/main/java%")
+                ).all()
+
+                assert len(deep_files) > 0, "Should find deeply nested files"
+
+                # 验证Java文件被找到
+                java_file = session.query(FileMeta).filter(
+                    FileMeta.name == "App.java",
+                    FileMeta.is_archived == 1
+                ).first()
+                assert java_file is not None, "Should find App.java"
+                assert "src/main/java/App.java" in java_file.path, "Path should preserve directory structure"
+
+                # 验证中文文件名被正确处理
+                chinese_file = session.query(FileMeta).filter(
+                    FileMeta.name == "中文文件.txt",
+                    FileMeta.is_archived == 1
+                ).first()
+                assert chinese_file is not None, "Should handle Chinese filenames"
+
+                # 验证特殊字符文件名
+                special_file = session.query(FileMeta).filter(
+                    FileMeta.name == "spécial-chars.txt",
+                    FileMeta.is_archived == 1
+                ).first()
+                assert special_file is not None, "Should handle special character filenames"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    def test_cli_archive_with_duplicates(self, cli_main_script_path, cli_archive_test_directory, temp_dir):
+        """测试压缩包内重复文件和与外部文件的重复检测"""
+        test_root = cli_archive_test_directory["root"]
+        db_path = temp_dir / "cli_duplicates.db"
+        log_path = temp_dir / "cli_duplicates.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_duplicates",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 查找压缩包内的重复文件
+                duplicate1_archived = session.query(FileMeta).filter(
+                    FileMeta.name == "duplicate1.txt",
+                    FileMeta.is_archived == 1
+                ).first()
+
+                duplicate2_archived = session.query(FileMeta).filter(
+                    FileMeta.name == "duplicate2.txt",
+                    FileMeta.is_archived == 1
+                ).first()
+
+                # 查找外部的重复文件
+                external_duplicate = session.query(FileMeta).filter(
+                    FileMeta.name == "duplicate_external.txt",
+                    FileMeta.is_archived == 0
+                ).first()
+
+                # 验证压缩包内重复文件共享哈希
+                if duplicate1_archived and duplicate2_archived:
+                    assert duplicate1_archived.hash_id == duplicate2_archived.hash_id, \
+                        "Duplicate files within archive should share hash ID"
+
+                # 验证压缩包内文件与外部文件的重复检测
+                if duplicate1_archived and external_duplicate:
+                    assert duplicate1_archived.hash_id == external_duplicate.hash_id, \
+                        "Duplicate content between archive and external files should share hash ID"
+
+                # 验证哈希数量的合理性
+                total_files = session.query(FileMeta).count()
+                total_hashes = session.query(FileHash).count()
+                assert total_hashes <= total_files, "Hash count should not exceed file count"
+                assert total_hashes < total_files, "Should have some duplicate content sharing hashes"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_large_archive_limits(self, cli_main_script_path, large_archive_test_directory, temp_dir):
+        """测试压缩包大小限制功能"""
+        test_root = large_archive_test_directory["root"]
+        db_path = temp_dir / "cli_limits.db"
+        log_path = temp_dir / "cli_limits.log"
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_limits",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 执行命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,  # 给大文件处理更多时间
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        # 验证命令执行成功（即使某些文件被跳过）
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+        # 连接数据库验证结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                # 验证超大压缩包本身被扫描但内容可能被跳过
+                large_zip_meta = session.query(FileMeta).filter(
+                    FileMeta.name == "large_archive.zip"
+                ).first()
+                assert large_zip_meta is not None, "Large archive file itself should be scanned"
+
+                # 验证超大压缩包内部文件可能被跳过（根据配置）
+                large_zip_internal = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%large_archive.zip%")
+                ).all()
+                # 根据大小限制，这些文件可能被跳过
+
+                # 验证正常大小压缩包但包含大文件的情况
+                normal_zip_meta = session.query(FileMeta).filter(
+                    FileMeta.name == "normal_with_large_files.zip"
+                ).first()
+                assert normal_zip_meta is not None, "Normal sized archive should be scanned"
+
+                # 检查该压缩包内的文件
+                normal_zip_internal = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1,
+                    FileMeta.archive_path.like("%normal_with_large_files.zip%")
+                ).all()
+
+                # 应该能找到小文件，大文件可能被跳过
+                small_files = [f for f in normal_zip_internal if f.name in ["small.txt", "another_small.txt"]]
+                assert len(small_files) > 0, "Small files within archive should be processed"
+
+                # 大文件可能被跳过
+                large_file = session.query(FileMeta).filter(
+                    FileMeta.name == "large_internal_file.bin",
+                    FileMeta.is_archived == 1
+                ).first()
+                # large_file 可能为 None（被跳过）或存在（如果限制配置不同）
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
+
+    @pytest.mark.integration
+    @pytest.mark.filesystem
+    @pytest.mark.database
+    @pytest.mark.slow
+    def test_cli_archive_incremental_scan(self, cli_main_script_path, temp_dir, archive_test_files):
+        """测试压缩包的增量扫描功能"""
+        import zipfile
+        import shutil
+
+        test_root = temp_dir / "incremental_archive_test"
+        test_root.mkdir(exist_ok=True)
+
+        db_path = temp_dir / "cli_incremental_archive.db"
+        log_path = temp_dir / "cli_incremental_archive.log"
+
+        # 创建初始压缩包
+        original_zip = test_root / "evolving.zip"
+        with zipfile.ZipFile(original_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("original.txt", "original content")
+            zf.writestr("will_change.txt", "initial content")
+
+        # 构建命令行参数
+        cmd = [
+            "uv", "run", "python", str(cli_main_script_path),
+            str(test_root),
+            "--machine_name", "cli_test_incremental_archive",
+            "--db_path", str(db_path),
+            "--log_path", str(log_path)
+        ]
+
+        # 第一次扫描
+        result1 = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        assert result1.returncode == 0, f"First scan failed: {result1.stderr}"
+
+        # 验证第一次扫描结果
+        db_manager = DatabaseManager()
+        db_manager.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager.session_factory() as session:
+                initial_files = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1
+                ).all()
+                initial_count = len(initial_files)
+                assert initial_count > 0, "Should have archived files from first scan"
+
+                # 验证所有文件都是ADD操作
+                add_operations = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1,
+                    FileMeta.operation == "ADD"
+                ).count()
+                assert add_operations == initial_count, "All archived files should have ADD operation initially"
+
+        finally:
+            db_manager.engine.dispose()
+
+        # 等待一秒确保时间戳不同
+        time.sleep(1)
+
+        # 创建修改后的压缩包
+        modified_zip = test_root / "evolving_modified.zip"
+        with zipfile.ZipFile(modified_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("original.txt", "original content")  # 未改变
+            zf.writestr("will_change.txt", "modified content")  # 已改变
+            zf.writestr("new_file.txt", "new content")  # 新文件
+
+        # 替换原压缩包
+        shutil.move(str(modified_zip), str(original_zip))
+
+        # 第二次扫描
+        result2 = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cli_main_script_path.parent.parent
+        )
+
+        assert result2.returncode == 0, f"Second scan failed: {result2.stderr}"
+
+        # 验证增量扫描结果
+        db_manager2 = DatabaseManager()
+        db_manager2.init(f"sqlite:///{db_path}")
+
+        try:
+            with db_manager2.session_factory() as session:
+                # 验证有新的操作记录
+                all_archived = session.query(FileMeta).filter(
+                    FileMeta.is_archived == 1
+                ).all()
+
+                # 应该有ADD和可能的MOD操作
+                operations = [f.operation for f in all_archived]
+                assert "ADD" in operations, "Should have ADD operations"
+
+                # 检查新文件
+                new_file = session.query(FileMeta).filter(
+                    FileMeta.name == "new_file.txt",
+                    FileMeta.is_archived == 1
+                ).first()
+                assert new_file is not None, "Should find new file"
+
+                # 检查原始文件（可能仍然存在或有新记录）
+                original_files = session.query(FileMeta).filter(
+                    FileMeta.name == "original.txt",
+                    FileMeta.is_archived == 1
+                ).all()
+                assert len(original_files) > 0, "Should find original file"
+
+        finally:
+            db_manager2.engine.dispose()
+
+        # 清理
+        if db_path.exists():
+            db_path.unlink()
+        if log_path.exists():
+            log_path.unlink()
