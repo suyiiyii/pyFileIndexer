@@ -13,10 +13,10 @@ from pathlib import Path
 
 def run_command(cmd, description=""):
     """运行命令并处理结果"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"运行: {description}")
     print(f"命令: {' '.join(cmd)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -45,32 +45,21 @@ def main():
     parser = argparse.ArgumentParser(description="pyFileIndexer 测试运行器")
 
     parser.add_argument(
-        "--type", "-t",
+        "--type",
+        "-t",
         choices=["unit", "integration", "all", "coverage", "lint"],
         default="all",
-        help="测试类型"
+        help="测试类型",
     )
 
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="详细输出"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="详细输出")
+
+    parser.add_argument("--parallel", "-p", action="store_true", help="并行运行测试")
+
+    parser.add_argument("--module", "-m", help="指定测试模块 (例如: test_models)")
 
     parser.add_argument(
-        "--parallel", "-p",
-        action="store_true",
-        help="并行运行测试"
-    )
-
-    parser.add_argument(
-        "--module", "-m",
-        help="指定测试模块 (例如: test_models)"
-    )
-
-    parser.add_argument(
-        "--function", "-f",
-        help="指定测试函数 (例如: test_file_hash_creation)"
+        "--function", "-f", help="指定测试函数 (例如: test_file_hash_creation)"
     )
 
     args = parser.parse_args()
@@ -122,7 +111,7 @@ def main():
             "--cov=pyFileIndexer",
             "--cov-report=html",
             "--cov-report=term-missing",
-            "tests/"
+            "tests/",
         ]
         if not run_command(cmd, "覆盖率测试"):
             success = False
@@ -176,7 +165,9 @@ def main():
         print("\n❌ 有测试失败了")
         print("\n调试建议:")
         print("1. 查看上面的错误输出")
-        print("2. 运行特定失败的测试: python run_tests.py -m <test_file> -f <test_function>")
+        print(
+            "2. 运行特定失败的测试: python run_tests.py -m <test_file> -f <test_function>"
+        )
         print("3. 使用详细模式: python run_tests.py -v")
         sys.exit(1)
 

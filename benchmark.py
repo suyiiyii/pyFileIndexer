@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple
 @dataclass
 class TestConfig:
     """测试配置"""
+
     small_files: int = 100
     medium_files: int = 1000
     large_files: int = 5000
@@ -38,6 +39,7 @@ class TestConfig:
 @dataclass
 class ResourceMetrics:
     """系统资源指标"""
+
     timestamp: float
     cpu_percent: float
     memory_mb: float
@@ -48,6 +50,7 @@ class ResourceMetrics:
 @dataclass
 class PerformanceResult:
     """性能测试结果"""
+
     test_name: str
     file_count: int
     total_size_mb: float
@@ -102,8 +105,12 @@ class ResourceMonitor:
             if io_supported:
                 try:
                     current_io = process.io_counters()
-                    disk_io_read_mb = (current_io.read_bytes - last_io.read_bytes) / 1024 / 1024
-                    disk_io_write_mb = (current_io.write_bytes - last_io.write_bytes) / 1024 / 1024
+                    disk_io_read_mb = (
+                        (current_io.read_bytes - last_io.read_bytes) / 1024 / 1024
+                    )
+                    disk_io_write_mb = (
+                        (current_io.write_bytes - last_io.write_bytes) / 1024 / 1024
+                    )
                     last_io = current_io
                 except (AttributeError, OSError):
                     io_supported = False
@@ -113,7 +120,7 @@ class ResourceMonitor:
                 cpu_percent=process.cpu_percent(),
                 memory_mb=process.memory_info().rss / 1024 / 1024,
                 disk_io_read_mb=disk_io_read_mb,
-                disk_io_write_mb=disk_io_write_mb
+                disk_io_write_mb=disk_io_write_mb,
             )
 
             self.metrics.append(metric)
@@ -124,15 +131,17 @@ class TestDataGenerator:
     """测试数据生成器"""
 
     @staticmethod
-    def create_test_files(base_dir: Path, file_count: int, config: TestConfig) -> Dict[str, any]:
+    def create_test_files(
+        base_dir: Path, file_count: int, config: TestConfig
+    ) -> Dict[str, any]:
         """创建测试文件"""
         base_dir.mkdir(parents=True, exist_ok=True)
 
         files_info = {
-            'total_files': file_count,
-            'total_size': 0,
-            'duplicate_files': 0,
-            'file_types': {'text': 0, 'binary': 0, 'empty': 0}
+            "total_files": file_count,
+            "total_size": 0,
+            "duplicate_files": 0,
+            "file_types": {"text": 0, "binary": 0, "empty": 0},
         }
 
         # 生成基础文件
@@ -143,19 +152,21 @@ class TestDataGenerator:
         for i in range(unique_count):
             file_path = base_dir / f"file_{i:06d}.txt"
             file_type, size = TestDataGenerator._create_single_file(file_path, config)
-            files_info['total_size'] += size
-            files_info['file_types'][file_type] += 1
+            files_info["total_size"] += size
+            files_info["file_types"][file_type] += 1
 
         # 创建重复文件（复制已有文件）
         for i in range(duplicate_count):
-            source_idx = random.randint(0, min(unique_count - 1, 50))  # 从前50个文件中选择
+            source_idx = random.randint(
+                0, min(unique_count - 1, 50)
+            )  # 从前50个文件中选择
             source_file = base_dir / f"file_{source_idx:06d}.txt"
             if source_file.exists():
                 duplicate_file = base_dir / f"duplicate_{i:06d}.txt"
                 shutil.copy2(source_file, duplicate_file)
-                files_info['total_size'] += source_file.stat().st_size
-                files_info['duplicate_files'] += 1
-                files_info['file_types']['text'] += 1
+                files_info["total_size"] += source_file.stat().st_size
+                files_info["duplicate_files"] += 1
+                files_info["file_types"]["text"] += 1
 
         return files_info
 
@@ -168,12 +179,14 @@ class TestDataGenerator:
         rand = random.random()
         if rand < 0.1:  # 10% 空文件
             file_path.touch()
-            return 'empty', 0
+            return "empty", 0
         elif rand < 0.3:  # 20% 二进制文件
-            size = random.randint(min_size, min(max_size, 1024 * 1024))  # 二进制文件不超过1MB
+            size = random.randint(
+                min_size, min(max_size, 1024 * 1024)
+            )  # 二进制文件不超过1MB
             content = bytes([random.randint(0, 255) for _ in range(size)])
             file_path.write_bytes(content)
-            return 'binary', size
+            return "binary", size
         else:  # 70% 文本文件
             size = random.randint(min_size, max_size)
             lines = []
@@ -185,7 +198,7 @@ class TestDataGenerator:
 
             content = "".join(lines)
             file_path.write_text(content)
-            return 'text', len(content.encode())
+            return "text", len(content.encode())
 
 
 class BenchmarkRunner:
@@ -237,8 +250,12 @@ class BenchmarkRunner:
 
         # 生成测试数据
         print("  生成测试文件...")
-        files_info = TestDataGenerator.create_test_files(test_dir, file_count, self.config)
-        print(f"  创建了 {files_info['total_files']} 个文件，总大小 {files_info['total_size'] / 1024 / 1024:.2f} MB")
+        files_info = TestDataGenerator.create_test_files(
+            test_dir, file_count, self.config
+        )
+        print(
+            f"  创建了 {files_info['total_files']} 个文件，总大小 {files_info['total_size'] / 1024 / 1024:.2f} MB"
+        )
 
         # 运行性能测试
         for round_num in range(self.config.test_rounds):
@@ -252,8 +269,8 @@ class BenchmarkRunner:
                 f"{scale_name}_round_{round_num + 1}",
                 test_dir,
                 db_path,
-                files_info['total_files'],
-                files_info['total_size'] / 1024 / 1024
+                files_info["total_files"],
+                files_info["total_size"] / 1024 / 1024,
             )
 
             if result:
@@ -279,8 +296,8 @@ class BenchmarkRunner:
             "incremental_first_scan",
             test_dir,
             db_path,
-            files_info['total_files'],
-            files_info['total_size'] / 1024 / 1024
+            files_info["total_files"],
+            files_info["total_size"] / 1024 / 1024,
         )
 
         if first_result:
@@ -292,13 +309,15 @@ class BenchmarkRunner:
             "incremental_repeat_scan",
             test_dir,
             db_path,
-            files_info['total_files'],
-            files_info['total_size'] / 1024 / 1024
+            files_info["total_files"],
+            files_info["total_size"] / 1024 / 1024,
         )
 
         if second_result:
             self.results.append(second_result)
-            print(f"  性能提升: {first_result.scan_time_seconds / second_result.scan_time_seconds:.2f}x")
+            print(
+                f"  性能提升: {first_result.scan_time_seconds / second_result.scan_time_seconds:.2f}x"
+            )
 
     def _run_modification_test(self):
         """运行文件修改测试"""
@@ -316,20 +335,22 @@ class BenchmarkRunner:
             "modification_initial",
             test_dir,
             db_path,
-            files_info['total_files'],
-            files_info['total_size'] / 1024 / 1024
+            files_info["total_files"],
+            files_info["total_size"] / 1024 / 1024,
         )
 
         # 修改部分文件
         print("  修改 20% 的文件...")
-        files_to_modify = int(files_info['total_files'] * 0.2)
+        files_to_modify = int(files_info["total_files"] * 0.2)
         for i in range(files_to_modify):
             file_path = test_dir / f"file_{i:06d}.txt"
             if file_path.exists():
                 try:
                     # 尝试作为文本文件读取和修改
-                    content = file_path.read_text(encoding='utf-8') + "\nModified content"
-                    file_path.write_text(content, encoding='utf-8')
+                    content = (
+                        file_path.read_text(encoding="utf-8") + "\nModified content"
+                    )
+                    file_path.write_text(content, encoding="utf-8")
                 except UnicodeDecodeError:
                     # 如果是二进制文件，则添加一些字节
                     content = file_path.read_bytes()
@@ -342,25 +363,37 @@ class BenchmarkRunner:
             "modification_after_changes",
             test_dir,
             db_path,
-            files_info['total_files'],
-            files_info['total_size'] / 1024 / 1024
+            files_info["total_files"],
+            files_info["total_size"] / 1024 / 1024,
         )
 
         if modified_result:
             self.results.append(modified_result)
 
-    def _run_single_scan(self, test_name: str, scan_dir: Path, db_path: Path,
-                        file_count: int, total_size_mb: float) -> Optional[PerformanceResult]:
+    def _run_single_scan(
+        self,
+        test_name: str,
+        scan_dir: Path,
+        db_path: Path,
+        file_count: int,
+        total_size_mb: float,
+    ) -> Optional[PerformanceResult]:
         """运行单次扫描测试"""
         monitor = ResourceMonitor()
 
         # 构建 CLI 命令
         cmd = [
-            "uv", "run", "python", "pyFileIndexer/main.py",
+            "uv",
+            "run",
+            "python",
+            "pyFileIndexer/main.py",
             str(scan_dir),
-            "--machine_name", self.config.machine_name,
-            "--db_path", str(db_path),
-            "--log_path", str(self.temp_dir / f"{test_name}.log")
+            "--machine_name",
+            self.config.machine_name,
+            "--db_path",
+            str(db_path),
+            "--log_path",
+            str(self.temp_dir / f"{test_name}.log"),
         ]
 
         try:
@@ -374,7 +407,7 @@ class BenchmarkRunner:
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5分钟超时
+                timeout=300,  # 5分钟超时
             )
 
             end_time = time.time()
@@ -408,7 +441,7 @@ class BenchmarkRunner:
                 db_size_mb=db_size_mb,
                 db_records=db_records,
                 resource_metrics=resource_metrics,
-                cli_output=result.stdout + result.stderr
+                cli_output=result.stdout + result.stderr,
             )
 
         except subprocess.TimeoutExpired:
@@ -462,18 +495,18 @@ class BenchmarkReporter:
     def _generate_json_report(results: List[PerformanceResult], output_path: Path):
         """生成 JSON 格式报告"""
         report_data = {
-            'timestamp': datetime.now().isoformat(),
-            'total_tests': len(results),
-            'results': [asdict(result) for result in results]
+            "timestamp": datetime.now().isoformat(),
+            "total_tests": len(results),
+            "results": [asdict(result) for result in results],
         }
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
 
     @staticmethod
     def _generate_text_report(results: List[PerformanceResult], output_path: Path):
         """生成文本格式报告"""
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write("pyFileIndexer 性能测试报告\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"测试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -491,8 +524,12 @@ class BenchmarkReporter:
                 f.write(f"数据库记录: {result.db_records:,}\n")
 
                 if result.resource_metrics:
-                    avg_cpu = sum(m.cpu_percent for m in result.resource_metrics) / len(result.resource_metrics)
-                    avg_memory = sum(m.memory_mb for m in result.resource_metrics) / len(result.resource_metrics)
+                    avg_cpu = sum(m.cpu_percent for m in result.resource_metrics) / len(
+                        result.resource_metrics
+                    )
+                    avg_memory = sum(
+                        m.memory_mb for m in result.resource_metrics
+                    ) / len(result.resource_metrics)
                     f.write(f"平均CPU使用: {avg_cpu:.1f}%\n")
                     f.write(f"平均内存使用: {avg_memory:.1f} MB\n")
 
@@ -504,21 +541,21 @@ class BenchmarkReporter:
         if not results:
             return
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write("性能测试汇总统计\n")
             f.write("=" * 40 + "\n\n")
 
             # 按规模分组统计
             scale_groups = {}
             for result in results:
-                if 'small' in result.test_name:
-                    scale = 'small'
-                elif 'medium' in result.test_name:
-                    scale = 'medium'
-                elif 'large' in result.test_name:
-                    scale = 'large'
+                if "small" in result.test_name:
+                    scale = "small"
+                elif "medium" in result.test_name:
+                    scale = "medium"
+                elif "large" in result.test_name:
+                    scale = "large"
                 else:
-                    scale = 'other'
+                    scale = "other"
 
                 if scale not in scale_groups:
                     scale_groups[scale] = []
@@ -531,9 +568,15 @@ class BenchmarkReporter:
                 f.write(f"{scale.upper()} 规模测试统计:\n")
                 f.write("-" * 30 + "\n")
 
-                avg_files_per_sec = sum(r.files_per_second for r in group_results) / len(group_results)
-                avg_mb_per_sec = sum(r.mb_per_second for r in group_results) / len(group_results)
-                avg_scan_time = sum(r.scan_time_seconds for r in group_results) / len(group_results)
+                avg_files_per_sec = sum(
+                    r.files_per_second for r in group_results
+                ) / len(group_results)
+                avg_mb_per_sec = sum(r.mb_per_second for r in group_results) / len(
+                    group_results
+                )
+                avg_scan_time = sum(r.scan_time_seconds for r in group_results) / len(
+                    group_results
+                )
 
                 f.write(f"平均处理速度: {avg_files_per_sec:.1f} 文件/秒\n")
                 f.write(f"平均吞吐量: {avg_mb_per_sec:.2f} MB/秒\n")
@@ -546,28 +589,28 @@ def main():
     parser = argparse.ArgumentParser(description="pyFileIndexer 性能测试工具")
 
     parser.add_argument(
-        "--small", type=int, default=100,
-        help="小规模测试文件数量 (默认: 100)"
+        "--small", type=int, default=100, help="小规模测试文件数量 (默认: 100)"
     )
     parser.add_argument(
-        "--medium", type=int, default=1000,
-        help="中规模测试文件数量 (默认: 1000)"
+        "--medium", type=int, default=1000, help="中规模测试文件数量 (默认: 1000)"
     )
     parser.add_argument(
-        "--large", type=int, default=5000,
-        help="大规模测试文件数量 (默认: 5000)"
+        "--large", type=int, default=5000, help="大规模测试文件数量 (默认: 5000)"
     )
     parser.add_argument(
-        "--rounds", type=int, default=3,
-        help="每个测试的运行轮数 (默认: 3)"
+        "--rounds", type=int, default=3, help="每个测试的运行轮数 (默认: 3)"
     )
     parser.add_argument(
-        "--output", type=str, default="benchmark_results",
-        help="输出目录 (默认: benchmark_results)"
+        "--output",
+        type=str,
+        default="benchmark_results",
+        help="输出目录 (默认: benchmark_results)",
     )
     parser.add_argument(
-        "--machine-name", type=str, default="benchmark-test",
-        help="机器名称标识 (默认: benchmark-test)"
+        "--machine-name",
+        type=str,
+        default="benchmark-test",
+        help="机器名称标识 (默认: benchmark-test)",
     )
 
     args = parser.parse_args()
@@ -578,7 +621,7 @@ def main():
         medium_files=args.medium,
         large_files=args.large,
         test_rounds=args.rounds,
-        machine_name=args.machine_name
+        machine_name=args.machine_name,
     )
 
     # 运行性能测试

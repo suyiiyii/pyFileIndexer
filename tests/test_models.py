@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
 
 from models import FileHash, FileMeta
@@ -20,7 +21,10 @@ class TestFileHash:
         assert sample_file_hash.size == 1024
         assert sample_file_hash.md5 == "d41d8cd98f00b204e9800998ecf8427e"
         assert sample_file_hash.sha1 == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
-        assert sample_file_hash.sha256 == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        assert (
+            sample_file_hash.sha256
+            == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
 
     @pytest.mark.unit
     def test_file_hash_with_different_values(self):
@@ -29,13 +33,16 @@ class TestFileHash:
             size=2048,
             md5="5d41402abc4b2a76b9719d911017c592",
             sha1="aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d",
-            sha256="2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+            sha256="2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
         )
 
         assert file_hash.size == 2048
         assert file_hash.md5 == "5d41402abc4b2a76b9719d911017c592"
         assert file_hash.sha1 == "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
-        assert file_hash.sha256 == "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+        assert (
+            file_hash.sha256
+            == "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+        )
 
     @pytest.mark.unit
     @pytest.mark.database
@@ -43,10 +50,7 @@ class TestFileHash:
         """测试 FileHash 在数据库中的持久化"""
         # 创建 FileHash 对象
         file_hash = FileHash(
-            size=1024,
-            md5="test_md5",
-            sha1="test_sha1",
-            sha256="test_sha256"
+            size=1024, md5="test_md5", sha1="test_sha1", sha256="test_sha256"
         )
 
         # 保存到数据库
@@ -65,7 +69,7 @@ class TestFileHash:
     @pytest.mark.unit
     def test_file_hash_table_name(self):
         """测试 FileHash 表名"""
-        assert FileHash.__tablename__ == 'file_hash'
+        assert FileHash.__tablename__ == "file_hash"
 
     @pytest.mark.unit
     def test_file_hash_with_zero_size(self):
@@ -74,7 +78,7 @@ class TestFileHash:
             size=0,
             md5="d41d8cd98f00b204e9800998ecf8427e",  # 空文件的 MD5
             sha1="da39a3ee5e6b4b0d3255bfef95601890afd80709",  # 空文件的 SHA1
-            sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # 空文件的 SHA256
+            sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  # 空文件的 SHA256
         )
 
         assert file_hash.size == 0
@@ -108,7 +112,7 @@ class TestFileMeta:
             created=created_time,
             modified=modified_time,
             scanned=scanned_time,
-            operation="ADD"
+            operation="ADD",
         )
 
         assert file_meta.created == created_time
@@ -128,7 +132,7 @@ class TestFileMeta:
             created=datetime(2024, 1, 1, 10, 0, 0),
             modified=datetime(2024, 1, 1, 11, 0, 0),
             scanned=datetime(2024, 1, 1, 12, 0, 0),
-            operation="ADD"
+            operation="ADD",
         )
 
         # 保存到数据库
@@ -148,7 +152,7 @@ class TestFileMeta:
     @pytest.mark.unit
     def test_file_meta_table_name(self):
         """测试 FileMeta 表名"""
-        assert FileMeta.__tablename__ == 'file_meta'
+        assert FileMeta.__tablename__ == "file_meta"
 
     @pytest.mark.unit
     def test_file_meta_with_different_operations(self):
@@ -159,7 +163,7 @@ class TestFileMeta:
             name="add_file.txt",
             path="/test/add_file.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
         assert add_meta.operation == "ADD"
 
@@ -169,7 +173,7 @@ class TestFileMeta:
             name="mod_file.txt",
             path="/test/mod_file.txt",
             machine="test_machine",
-            operation="MOD"
+            operation="MOD",
         )
         assert mod_meta.operation == "MOD"
 
@@ -183,7 +187,7 @@ class TestFileMeta:
             name="very_long_filename_that_might_be_problematic.txt",
             path=long_path,
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         assert file_meta.path == long_path
@@ -200,7 +204,7 @@ class TestFileMeta:
             name=special_name,
             path=special_path,
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         assert file_meta.name == special_name
@@ -216,10 +220,7 @@ class TestModelRelationships:
         """测试 FileMeta 和 FileHash 之间的关系"""
         # 创建 FileHash
         file_hash = FileHash(
-            size=1024,
-            md5="test_md5",
-            sha1="test_sha1",
-            sha256="test_sha256"
+            size=1024, md5="test_md5", sha1="test_sha1", sha256="test_sha256"
         )
 
         with memory_db_manager.session_factory() as session:
@@ -232,7 +233,7 @@ class TestModelRelationships:
                 name="test.txt",
                 path="/test/test.txt",
                 machine="test_machine",
-                operation="ADD"
+                operation="ADD",
             )
 
             session.add(file_meta)
@@ -240,7 +241,9 @@ class TestModelRelationships:
 
             # 验证关系
             retrieved_meta = session.query(FileMeta).filter_by(name="test.txt").first()
-            retrieved_hash = session.query(FileHash).filter_by(id=retrieved_meta.hash_id).first()
+            retrieved_hash = (
+                session.query(FileHash).filter_by(id=retrieved_meta.hash_id).first()
+            )
 
             assert retrieved_meta.hash_id == file_hash.id
             assert retrieved_hash.md5 == "test_md5"
@@ -251,10 +254,7 @@ class TestModelRelationships:
         """测试多个文件共享同一个哈希值"""
         # 创建一个 FileHash
         file_hash = FileHash(
-            size=1024,
-            md5="shared_md5",
-            sha1="shared_sha1",
-            sha256="shared_sha256"
+            size=1024, md5="shared_md5", sha1="shared_sha1", sha256="shared_sha256"
         )
 
         with memory_db_manager.session_factory() as session:
@@ -267,7 +267,7 @@ class TestModelRelationships:
                 name="file1.txt",
                 path="/path1/file1.txt",
                 machine="machine1",
-                operation="ADD"
+                operation="ADD",
             )
 
             file_meta2 = FileMeta(
@@ -275,13 +275,15 @@ class TestModelRelationships:
                 name="file2.txt",
                 path="/path2/file2.txt",
                 machine="machine2",
-                operation="ADD"
+                operation="ADD",
             )
 
             session.add_all([file_meta1, file_meta2])
             session.commit()
 
             # 验证两个文件共享同一个哈希
-            files_with_same_hash = session.query(FileMeta).filter_by(hash_id=file_hash.id).all()
+            files_with_same_hash = (
+                session.query(FileMeta).filter_by(hash_id=file_hash.id).all()
+            )
             assert len(files_with_same_hash) == 2
             assert files_with_same_hash[0].hash_id == files_with_same_hash[1].hash_id

@@ -19,7 +19,7 @@ from web_models import (
     FileWithHashResponse,
     FileMetaResponse,
     FileHashResponse,
-    DuplicateFileGroup
+    DuplicateFileGroup,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,26 +30,26 @@ def convert_db_record_to_response(file_meta, file_hash) -> FileWithHashResponse:
     try:
         # 安全地访问file_meta属性，提供默认值
         meta_response = FileMetaResponse(
-            id=getattr(file_meta, 'id', None),
-            hash_id=getattr(file_meta, 'hash_id', None),
-            name=getattr(file_meta, 'name', ''),
-            path=getattr(file_meta, 'path', ''),
-            machine=getattr(file_meta, 'machine', 'unknown'),
-            created=getattr(file_meta, 'created', '1970-01-01T00:00:00'),
-            modified=getattr(file_meta, 'modified', '1970-01-01T00:00:00'),
-            scanned=getattr(file_meta, 'scanned', '1970-01-01T00:00:00'),
-            operation=getattr(file_meta, 'operation', 'ADD')
+            id=getattr(file_meta, "id", None),
+            hash_id=getattr(file_meta, "hash_id", None),
+            name=getattr(file_meta, "name", ""),
+            path=getattr(file_meta, "path", ""),
+            machine=getattr(file_meta, "machine", "unknown"),
+            created=getattr(file_meta, "created", "1970-01-01T00:00:00"),
+            modified=getattr(file_meta, "modified", "1970-01-01T00:00:00"),
+            scanned=getattr(file_meta, "scanned", "1970-01-01T00:00:00"),
+            operation=getattr(file_meta, "operation", "ADD"),
         )
 
         hash_response = None
         if file_hash:
             try:
                 hash_response = FileHashResponse(
-                    id=getattr(file_hash, 'id', None),
-                    size=getattr(file_hash, 'size', 0),
-                    md5=getattr(file_hash, 'md5', ''),
-                    sha1=getattr(file_hash, 'sha1', ''),
-                    sha256=getattr(file_hash, 'sha256', '')
+                    id=getattr(file_hash, "id", None),
+                    size=getattr(file_hash, "size", 0),
+                    md5=getattr(file_hash, "md5", ""),
+                    sha1=getattr(file_hash, "sha1", ""),
+                    sha256=getattr(file_hash, "sha256", ""),
                 )
             except Exception as e:
                 logger.error(f"Error processing file_hash: {e}")
@@ -70,9 +70,9 @@ def convert_db_record_to_response(file_meta, file_hash) -> FileWithHashResponse:
                 created="1970-01-01T00:00:00",
                 modified="1970-01-01T00:00:00",
                 scanned="1970-01-01T00:00:00",
-                operation="ERROR"
+                operation="ERROR",
             ),
-            hash=None
+            hash=None,
         )
 
 
@@ -81,13 +81,16 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="pyFileIndexer API",
         description="File indexing and search API",
-        version="1.0.0"
+        version="1.0.0",
     )
 
     # 配置 CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React 开发服务器
+        allow_origins=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+        ],  # React 开发服务器
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -102,7 +105,7 @@ def create_app() -> FastAPI:
         machine: Optional[str] = Query(None),
         min_size: Optional[int] = Query(None, ge=0),
         max_size: Optional[int] = Query(None, ge=0),
-        hash_value: Optional[str] = Query(None)
+        hash_value: Optional[str] = Query(None),
     ):
         """获取文件列表，支持分页和过滤"""
         try:
@@ -110,30 +113,30 @@ def create_app() -> FastAPI:
 
             filters = {}
             if name:
-                filters['name'] = name
+                filters["name"] = name
             if path:
-                filters['path'] = path
+                filters["path"] = path
             if machine:
-                filters['machine'] = machine
+                filters["machine"] = machine
             if min_size is not None:
-                filters['min_size'] = min_size
+                filters["min_size"] = min_size
             if max_size is not None:
-                filters['max_size'] = max_size
+                filters["max_size"] = max_size
             if hash_value:
-                filters['hash_value'] = hash_value
+                filters["hash_value"] = hash_value
 
             logger.debug(f"Filters applied: {filters}")
 
             result = db_manager.get_files_paginated(
-                page=page,
-                per_page=per_page,
-                filters=filters if filters else None
+                page=page, per_page=per_page, filters=filters if filters else None
             )
 
-            logger.info(f"Database returned {len(result['files'])} files, total={result['total']}")
+            logger.info(
+                f"Database returned {len(result['files'])} files, total={result['total']}"
+            )
 
             files = []
-            for file_meta, file_hash in result['files']:
+            for file_meta, file_hash in result["files"]:
                 try:
                     file_response = convert_db_record_to_response(file_meta, file_hash)
                     files.append(file_response)
@@ -143,10 +146,10 @@ def create_app() -> FastAPI:
 
             response = PaginatedFilesResponse(
                 files=files,
-                total=result['total'],
-                page=result['page'],
-                per_page=result['per_page'],
-                pages=result['pages']
+                total=result["total"],
+                page=result["page"],
+                per_page=result["per_page"],
+                pages=result["pages"],
             )
 
             logger.info(f"Returning {len(files)} files in response")
@@ -154,12 +157,16 @@ def create_app() -> FastAPI:
 
         except Exception as e:
             logger.error(f"Error in get_files endpoint: {e}")
-            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Internal server error: {str(e)}"
+            )
 
     @app.get("/api/search", response_model=list[FileWithHashResponse])
     async def search_files(
         query: str = Query(..., description="搜索关键词"),
-        search_type: str = Query("name", regex="^(name|path|hash)$", description="搜索类型")
+        search_type: str = Query(
+            "name", regex="^(name|path|hash)$", description="搜索类型"
+        ),
     ):
         """搜索文件"""
         try:
@@ -191,12 +198,11 @@ def create_app() -> FastAPI:
             for dup_group in duplicates_data:
                 files = [
                     convert_db_record_to_response(file_meta, file_hash)
-                    for file_meta, file_hash in dup_group['files']
+                    for file_meta, file_hash in dup_group["files"]
                 ]
-                duplicates.append(DuplicateFileGroup(
-                    hash=dup_group['hash'],
-                    files=files
-                ))
+                duplicates.append(
+                    DuplicateFileGroup(hash=dup_group["hash"], files=files)
+                )
 
             return DuplicateFilesResponse(duplicates=duplicates)
         except Exception as e:
@@ -213,7 +219,11 @@ def create_app() -> FastAPI:
 
     if frontend_dist_path.exists():
         # 服务静态文件
-        app.mount("/static", StaticFiles(directory=str(frontend_dist_path / "assets")), name="static")
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(frontend_dist_path / "assets")),
+            name="static",
+        )
 
         # 服务前端应用（所有非API路径）
         @app.get("/{path:path}")
@@ -270,13 +280,7 @@ def start_web_server(db_path: str, host: str, port: int):
         logger.info("按 Ctrl+C 停止服务器")
 
         # 启动服务器
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            log_level="info",
-            access_log=True
-        )
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
 
     except Exception as e:
         logger.error(f"启动 Web 服务器失败: {e}")

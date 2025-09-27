@@ -29,11 +29,11 @@ class DatabaseManager:
 
     def __init__(self):
         # 添加二次检查，确保线程安全
-        if hasattr(self, '_initialized') and self._initialized:
+        if hasattr(self, "_initialized") and self._initialized:
             return
 
         with self.__class__._lock:
-            if hasattr(self, '_initialized') and self._initialized:
+            if hasattr(self, "_initialized") and self._initialized:
                 return
 
             self.engine = None
@@ -48,10 +48,10 @@ class DatabaseManager:
             self.engine = create_engine(
                 db_url,
                 connect_args={
-                    'check_same_thread': False,  # 允许跨线程使用
-                    'timeout': 20  # 设置超时
+                    "check_same_thread": False,  # 允许跨线程使用
+                    "timeout": 20,  # 设置超时
                 },
-                echo=False
+                echo=False,
             )
         else:
             # 其他数据库的标准配置
@@ -110,15 +110,20 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_file_with_hash_by_path(self, path: str) -> Optional[tuple["FileMeta", Optional["FileHash"]]]:
+    def get_file_with_hash_by_path(
+        self, path: str
+    ) -> Optional[tuple["FileMeta", Optional["FileHash"]]]:
         """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
         from models import FileMeta, FileHash
 
         session = self.session_factory()
         try:
-            result = session.query(FileMeta, FileHash).outerjoin(
-                FileHash, FileMeta.hash_id == FileHash.id
-            ).filter(FileMeta.path == path).first()
+            result = (
+                session.query(FileMeta, FileHash)
+                .outerjoin(FileHash, FileMeta.hash_id == FileHash.id)
+                .filter(FileMeta.path == path)
+                .first()
+            )
 
             if result:
                 file_meta, file_hash = result
@@ -193,6 +198,7 @@ class DatabaseManager:
     def update_file(self, file: "FileMeta", hash: Optional["FileHash"] = None):
         """更新现有文件信息。"""
         from models import FileMeta
+
         with self.session_scope() as session:
             # 查找现有的文件记录
             existing_file = session.query(FileMeta).filter_by(path=file.path).first()
@@ -204,12 +210,16 @@ class DatabaseManager:
                 existing_file.scanned = file.scanned
                 existing_file.operation = file.operation
                 existing_file.machine = file.machine
-                existing_file.is_archived = getattr(file, 'is_archived', 0)
-                existing_file.archive_path = getattr(file, 'archive_path', None)
+                existing_file.is_archived = getattr(file, "is_archived", 0)
+                existing_file.archive_path = getattr(file, "archive_path", None)
 
                 if hash is not None:
                     # 如果哈希信息已经存在，则直接使用已有的哈希信息
-                    hash_dict = {"md5": hash.md5, "sha1": hash.sha1, "sha256": hash.sha256}  # type: ignore
+                    hash_dict = {
+                        "md5": hash.md5,
+                        "sha1": hash.sha1,
+                        "sha256": hash.sha256,
+                    }  # type: ignore
                     if hash_in_db := self.get_hash_by_hash(hash_dict):  # type: ignore
                         existing_file.hash_id = hash_in_db.id  # type: ignore
                     else:
@@ -222,7 +232,9 @@ class DatabaseManager:
                 if hash is not None:
                     session.add(hash)
 
-    def get_files_paginated(self, page: int = 1, per_page: int = 20, filters: Optional[dict] = None) -> dict:
+    def get_files_paginated(
+        self, page: int = 1, per_page: int = 20, filters: Optional[dict] = None
+    ) -> dict:
         """分页查询文件列表"""
         from models import FileMeta, FileHash
         import logging
@@ -237,27 +249,31 @@ class DatabaseManager:
 
                 # 应用过滤器
                 if filters:
-                    if filters.get('name'):
-                        query = query.filter(FileMeta.name.contains(filters['name']))
-                    if filters.get('path'):
-                        query = query.filter(FileMeta.path.contains(filters['path']))
-                    if filters.get('machine'):
-                        query = query.filter(FileMeta.machine == filters['machine'])
-                    if filters.get('min_size') is not None:
-                        query = query.filter(FileHash.size >= filters['min_size'])
-                    if filters.get('max_size') is not None:
-                        query = query.filter(FileHash.size <= filters['max_size'])
-                    if filters.get('hash_value'):
-                        hash_value = filters['hash_value']
+                    if filters.get("name"):
+                        query = query.filter(FileMeta.name.contains(filters["name"]))
+                    if filters.get("path"):
+                        query = query.filter(FileMeta.path.contains(filters["path"]))
+                    if filters.get("machine"):
+                        query = query.filter(FileMeta.machine == filters["machine"])
+                    if filters.get("min_size") is not None:
+                        query = query.filter(FileHash.size >= filters["min_size"])
+                    if filters.get("max_size") is not None:
+                        query = query.filter(FileHash.size <= filters["max_size"])
+                    if filters.get("hash_value"):
+                        hash_value = filters["hash_value"]
                         query = query.filter(
-                            (FileHash.md5 == hash_value) |
-                            (FileHash.sha1 == hash_value) |
-                            (FileHash.sha256 == hash_value)
+                            (FileHash.md5 == hash_value)
+                            | (FileHash.sha1 == hash_value)
+                            | (FileHash.sha256 == hash_value)
                         )
-                    if filters.get('is_archived') is not None:
-                        query = query.filter(FileMeta.is_archived == filters['is_archived'])
-                    if filters.get('archive_path'):
-                        query = query.filter(FileMeta.archive_path.contains(filters['archive_path']))
+                    if filters.get("is_archived") is not None:
+                        query = query.filter(
+                            FileMeta.is_archived == filters["is_archived"]
+                        )
+                    if filters.get("archive_path"):
+                        query = query.filter(
+                            FileMeta.archive_path.contains(filters["archive_path"])
+                        )
 
                 # 计算总数
                 total = query.count()
@@ -282,18 +298,18 @@ class DatabaseManager:
                         continue
 
                 return {
-                    'files': files,
-                    'total': total,
-                    'page': page,
-                    'per_page': per_page,
-                    'pages': (total + per_page - 1) // per_page
+                    "files": files,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "pages": (total + per_page - 1) // per_page,
                 }
 
         except Exception as e:
             logger.error(f"Error in get_files_paginated: {e}")
             raise
 
-    def search_files(self, query: str, search_type: str = 'name') -> list:
+    def search_files(self, query: str, search_type: str = "name") -> list:
         """搜索文件"""
         from models import FileMeta, FileHash
 
@@ -302,15 +318,15 @@ class DatabaseManager:
                 FileHash, FileMeta.hash_id == FileHash.id
             )
 
-            if search_type == 'name':
+            if search_type == "name":
                 db_query = db_query.filter(FileMeta.name.contains(query))
-            elif search_type == 'path':
+            elif search_type == "path":
                 db_query = db_query.filter(FileMeta.path.contains(query))
-            elif search_type == 'hash':
+            elif search_type == "hash":
                 db_query = db_query.filter(
-                    (FileHash.md5 == query) |
-                    (FileHash.sha1 == query) |
-                    (FileHash.sha256 == query)
+                    (FileHash.md5 == query)
+                    | (FileHash.sha1 == query)
+                    | (FileHash.sha256 == query)
                 )
 
             results = db_query.all()
@@ -339,24 +355,26 @@ class DatabaseManager:
             total_size = session.query(func.sum(FileHash.size)).scalar() or 0
 
             # 按机器统计
-            machine_stats = session.query(
-                FileMeta.machine,
-                func.count(FileMeta.id)
-            ).group_by(FileMeta.machine).all()
+            machine_stats = (
+                session.query(FileMeta.machine, func.count(FileMeta.id))
+                .group_by(FileMeta.machine)
+                .all()
+            )
 
             # 重复文件统计
-            duplicate_hashes = session.query(
-                FileHash.md5,
-                func.count(FileMeta.id).label('count')
-            ).join(FileMeta, FileMeta.hash_id == FileHash.id)\
-             .group_by(FileHash.md5)\
-             .having(func.count(FileMeta.id) > 1).all()
+            duplicate_hashes = (
+                session.query(FileHash.md5, func.count(FileMeta.id).label("count"))
+                .join(FileMeta, FileMeta.hash_id == FileHash.id)
+                .group_by(FileHash.md5)
+                .having(func.count(FileMeta.id) > 1)
+                .all()
+            )
 
             return {
-                'total_files': total_files,
-                'total_size': total_size,
-                'machine_stats': {machine: count for machine, count in machine_stats},
-                'duplicate_files': len(duplicate_hashes)
+                "total_files": total_files,
+                "total_size": total_size,
+                "machine_stats": {machine: count for machine, count in machine_stats},
+                "duplicate_files": len(duplicate_hashes),
             }
 
     def find_duplicate_files(self) -> list:
@@ -366,16 +384,22 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             # 查找有多个文件的哈希值
-            duplicate_hashes = session.query(FileHash.md5)\
-                .join(FileMeta, FileMeta.hash_id == FileHash.id)\
-                .group_by(FileHash.md5)\
-                .having(func.count(FileMeta.id) > 1).all()
+            duplicate_hashes = (
+                session.query(FileHash.md5)
+                .join(FileMeta, FileMeta.hash_id == FileHash.id)
+                .group_by(FileHash.md5)
+                .having(func.count(FileMeta.id) > 1)
+                .all()
+            )
 
             duplicates = []
             for (md5_hash,) in duplicate_hashes:
-                files = session.query(FileMeta, FileHash)\
-                    .join(FileHash, FileMeta.hash_id == FileHash.id)\
-                    .filter(FileHash.md5 == md5_hash).all()
+                files = (
+                    session.query(FileMeta, FileHash)
+                    .join(FileHash, FileMeta.hash_id == FileHash.id)
+                    .filter(FileHash.md5 == md5_hash)
+                    .all()
+                )
 
                 # 分离对象
                 file_group = []
@@ -384,10 +408,7 @@ class DatabaseManager:
                     session.expunge(file_hash)
                     file_group.append((file_meta, file_hash))
 
-                duplicates.append({
-                    'hash': md5_hash,
-                    'files': file_group
-                })
+                duplicates.append({"hash": md5_hash, "files": file_group})
 
             return duplicates
 
@@ -400,14 +421,18 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             # 构建查询条件，查找所有可能存在的哈希
-            hash_keys = [(h['md5'], h['sha1'], h['sha256']) for h in hash_data]
+            hash_keys = [(h["md5"], h["sha1"], h["sha256"]) for h in hash_data]
 
             if not hash_keys:
                 return {}
 
-            existing_hashes = session.query(FileHash).filter(
-                tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(hash_keys)
-            ).all()
+            existing_hashes = (
+                session.query(FileHash)
+                .filter(
+                    tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(hash_keys)
+                )
+                .all()
+            )
 
             # 创建映射：(md5, sha1, sha256) -> hash_id
             hash_mapping = {}
@@ -436,19 +461,19 @@ class DatabaseManager:
             update_files = []
 
             for item in files_data:
-                file_meta = item['file_meta']
-                file_hash = item['file_hash']
-                operation = item['operation']
+                file_meta = item["file_meta"]
+                file_hash = item["file_hash"]
+                operation = item["operation"]
 
                 hash_dict = {
-                    'md5': file_hash.md5,
-                    'sha1': file_hash.sha1,
-                    'sha256': file_hash.sha256,
-                    'size': file_hash.size
+                    "md5": file_hash.md5,
+                    "sha1": file_hash.sha1,
+                    "sha256": file_hash.sha256,
+                    "size": file_hash.size,
                 }
                 hash_data.append(hash_dict)
 
-                if operation == 'ADD':
+                if operation == "ADD":
                     new_files.append((file_meta, file_hash, hash_dict))
                 else:  # MOD
                     update_files.append((file_meta, file_hash, hash_dict))
@@ -461,7 +486,7 @@ class DatabaseManager:
             hash_to_insert = []
 
             for item in hash_data:
-                hash_key = (item['md5'], item['sha1'], item['sha256'])
+                hash_key = (item["md5"], item["sha1"], item["sha256"])
                 if hash_key not in existing_hashes and hash_key not in seen_hashes:
                     hash_to_insert.append(item)
                     seen_hashes.add(hash_key)
@@ -472,10 +497,16 @@ class DatabaseManager:
                 session.flush()  # 获取插入的ID
 
                 # 重新查询获取新插入哈希的ID
-                hash_keys = [(h['md5'], h['sha1'], h['sha256']) for h in hash_to_insert]
-                new_hashes = session.query(FileHash).filter(
-                    tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(hash_keys)
-                ).all()
+                hash_keys = [(h["md5"], h["sha1"], h["sha256"]) for h in hash_to_insert]
+                new_hashes = (
+                    session.query(FileHash)
+                    .filter(
+                        tuple_(FileHash.md5, FileHash.sha1, FileHash.sha256).in_(
+                            hash_keys
+                        )
+                    )
+                    .all()
+                )
 
                 for hash_obj in new_hashes:
                     key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)
@@ -486,30 +517,32 @@ class DatabaseManager:
 
             # 处理新文件
             for file_meta, file_hash, hash_dict in new_files:
-                hash_key = (hash_dict['md5'], hash_dict['sha1'], hash_dict['sha256'])
+                hash_key = (hash_dict["md5"], hash_dict["sha1"], hash_dict["sha256"])
                 hash_id = existing_hashes[hash_key]
 
                 file_dict = {
-                    'name': file_meta.name,
-                    'path': file_meta.path,
-                    'machine': file_meta.machine,
-                    'created': file_meta.created,
-                    'modified': file_meta.modified,
-                    'scanned': file_meta.scanned,
-                    'operation': file_meta.operation,
-                    'hash_id': hash_id,
-                    'is_archived': getattr(file_meta, 'is_archived', 0),
-                    'archive_path': getattr(file_meta, 'archive_path', None)
+                    "name": file_meta.name,
+                    "path": file_meta.path,
+                    "machine": file_meta.machine,
+                    "created": file_meta.created,
+                    "modified": file_meta.modified,
+                    "scanned": file_meta.scanned,
+                    "operation": file_meta.operation,
+                    "hash_id": hash_id,
+                    "is_archived": getattr(file_meta, "is_archived", 0),
+                    "archive_path": getattr(file_meta, "archive_path", None),
                 }
                 files_to_insert.append(file_dict)
 
             # 处理更新文件
             for file_meta, file_hash, hash_dict in update_files:
-                hash_key = (hash_dict['md5'], hash_dict['sha1'], hash_dict['sha256'])
+                hash_key = (hash_dict["md5"], hash_dict["sha1"], hash_dict["sha256"])
                 hash_id = existing_hashes[hash_key]
 
                 # 查找现有文件记录
-                existing_file = session.query(FileMeta).filter_by(path=file_meta.path).first()
+                existing_file = (
+                    session.query(FileMeta).filter_by(path=file_meta.path).first()
+                )
                 if existing_file:
                     existing_file.name = file_meta.name
                     existing_file.created = file_meta.created
@@ -518,21 +551,23 @@ class DatabaseManager:
                     existing_file.operation = file_meta.operation
                     existing_file.machine = file_meta.machine
                     existing_file.hash_id = hash_id
-                    existing_file.is_archived = getattr(file_meta, 'is_archived', 0)
-                    existing_file.archive_path = getattr(file_meta, 'archive_path', None)
+                    existing_file.is_archived = getattr(file_meta, "is_archived", 0)
+                    existing_file.archive_path = getattr(
+                        file_meta, "archive_path", None
+                    )
                 else:
                     # 如果文件不存在，添加为新文件
                     file_dict = {
-                        'name': file_meta.name,
-                        'path': file_meta.path,
-                        'machine': file_meta.machine,
-                        'created': file_meta.created,
-                        'modified': file_meta.modified,
-                        'scanned': file_meta.scanned,
-                        'operation': file_meta.operation,
-                        'hash_id': hash_id,
-                        'is_archived': getattr(file_meta, 'is_archived', 0),
-                        'archive_path': getattr(file_meta, 'archive_path', None)
+                        "name": file_meta.name,
+                        "path": file_meta.path,
+                        "machine": file_meta.machine,
+                        "created": file_meta.created,
+                        "modified": file_meta.modified,
+                        "scanned": file_meta.scanned,
+                        "operation": file_meta.operation,
+                        "hash_id": hash_id,
+                        "is_archived": getattr(file_meta, "is_archived", 0),
+                        "archive_path": getattr(file_meta, "archive_path", None),
                     }
                     files_to_insert.append(file_dict)
 

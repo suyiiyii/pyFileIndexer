@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
 
 from config import settings
@@ -26,15 +27,15 @@ class TestConfig:
         assert isinstance(settings, Dynaconf)
 
         # 验证配置加载方式 - 测试实际可用的方法
-        assert callable(getattr(settings, 'get', None))
+        assert callable(getattr(settings, "get", None))
 
         # 验证实际存在的属性
-        assert hasattr(settings, 'settings_file')  # 单数形式
-        assert hasattr(settings, 'envvar_prefix_for_dynaconf')  # 实际属性名
+        assert hasattr(settings, "settings_file")  # 单数形式
+        assert hasattr(settings, "envvar_prefix_for_dynaconf")  # 实际属性名
 
         # 验证配置文件相关功能
-        assert callable(getattr(settings, 'load_file', None))
-        assert callable(getattr(settings, 'reload', None))
+        assert callable(getattr(settings, "load_file", None))
+        assert callable(getattr(settings, "reload", None))
 
     @pytest.mark.unit
     def test_environment_variable_prefix(self, monkeypatch):
@@ -45,7 +46,7 @@ class TestConfig:
         # 创建新的配置实例来加载环境变量
         test_settings = Dynaconf(
             envvar_prefix="DYNACONF",
-            settings_files=['settings.toml', '.secrets.toml'],
+            settings_files=["settings.toml", ".secrets.toml"],
         )
 
         # 验证环境变量被正确读取
@@ -60,7 +61,7 @@ class TestConfig:
         # 创建新的配置实例
         test_settings = Dynaconf(
             envvar_prefix="DYNACONF",
-            settings_files=['settings.toml', '.secrets.toml'],
+            settings_files=["settings.toml", ".secrets.toml"],
         )
 
         assert test_settings.MACHINE_NAME == test_machine_name
@@ -74,7 +75,7 @@ class TestConfig:
         # 创建新的配置实例
         test_settings = Dynaconf(
             envvar_prefix="DYNACONF",
-            settings_files=['settings.toml', '.secrets.toml'],
+            settings_files=["settings.toml", ".secrets.toml"],
         )
 
         # Dynaconf 可能会自动转换为 datetime 对象
@@ -137,8 +138,8 @@ file_only = "file_value"
 
         # 验证优先级：环境变量覆盖文件配置
         assert test_settings.priority_test == "from_env"  # 环境变量优先
-        assert test_settings.file_only == "file_value"    # 只在文件中的配置
-        assert test_settings.env_only == "env_value"      # 只在环境变量中的配置
+        assert test_settings.file_only == "file_value"  # 只在文件中的配置
+        assert test_settings.env_only == "env_value"  # 只在环境变量中的配置
 
     @pytest.mark.unit
     def test_missing_config_files(self):
@@ -146,7 +147,7 @@ file_only = "file_value"
         # 创建指向不存在文件的配置
         test_settings = Dynaconf(
             envvar_prefix="DYNACONF",
-            settings_files=['nonexistent1.toml', 'nonexistent2.toml'],
+            settings_files=["nonexistent1.toml", "nonexistent2.toml"],
         )
 
         # 应该能正常创建，只是没有从文件加载配置
@@ -326,7 +327,9 @@ db_encryption_key = "development_key_not_for_production"
 
             # 验证配置加载
             assert test_settings.machine_name == "localhost"
-            assert test_settings.db_encryption_key == "development_key_not_for_production"
+            assert (
+                test_settings.db_encryption_key == "development_key_not_for_production"
+            )
 
         finally:
             os.chdir(original_cwd)

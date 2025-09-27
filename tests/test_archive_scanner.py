@@ -16,7 +16,7 @@ from pyFileIndexer.archive_scanner import (
     ZipArchiveScanner,
     TarArchiveScanner,
     create_archive_scanner,
-    calculate_hash_from_data
+    calculate_hash_from_data,
 )
 
 
@@ -68,7 +68,9 @@ class TestArchiveEntry:
         test_data = b"Hello, World!"
         reader = lambda: test_data
 
-        entry = ArchiveEntry("test.txt", len(test_data), datetime.datetime.now(), data_reader=reader)
+        entry = ArchiveEntry(
+            "test.txt", len(test_data), datetime.datetime.now(), data_reader=reader
+        )
         assert entry.read_data() == test_data
 
 
@@ -77,8 +79,8 @@ class TestZipArchiveScanner:
 
     def create_test_zip(self, files_data):
         """创建测试用的ZIP文件"""
-        temp_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
-        with zipfile.ZipFile(temp_file.name, 'w') as zip_file:
+        temp_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        with zipfile.ZipFile(temp_file.name, "w") as zip_file:
             for filename, data in files_data.items():
                 zip_file.writestr(filename, data)
         return temp_file.name
@@ -97,7 +99,7 @@ class TestZipArchiveScanner:
         files_data = {
             "file1.txt": "Content of file 1",
             "dir/file2.txt": "Content of file 2",
-            "file3.py": "print('Hello')"
+            "file3.py": "print('Hello')",
         }
 
         zip_path = self.create_test_zip(files_data)
@@ -152,8 +154,8 @@ class TestTarArchiveScanner:
 
     def create_test_tar(self, files_data):
         """创建测试用的TAR文件"""
-        temp_file = tempfile.NamedTemporaryFile(suffix='.tar', delete=False)
-        with tarfile.open(temp_file.name, 'w') as tar_file:
+        temp_file = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
+        with tarfile.open(temp_file.name, "w") as tar_file:
             for filename, data in files_data.items():
                 info = tarfile.TarInfo(name=filename)
                 info.size = len(data.encode())
@@ -164,7 +166,7 @@ class TestTarArchiveScanner:
         """测试扫描TAR文件条目"""
         files_data = {
             "file1.txt": "Content of file 1",
-            "dir/file2.txt": "Content of file 2"
+            "dir/file2.txt": "Content of file 2",
         }
 
         tar_path = self.create_test_tar(files_data)

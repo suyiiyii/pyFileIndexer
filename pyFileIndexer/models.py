@@ -5,7 +5,7 @@ from database import Base
 
 @dataclass
 class FileHash(Base):
-    __tablename__ = 'file_hash'
+    __tablename__ = "file_hash"
     # id 主键，自增
     id = Column(Integer, primary_key=True, autoincrement=True)
     # 文件大小，添加索引用于大小范围查询
@@ -18,7 +18,7 @@ class FileHash(Base):
 
 @dataclass
 class FileMeta(Base):
-    __tablename__ = 'file_meta'
+    __tablename__ = "file_meta"
     # id 主键，自增
     id = Column(Integer, primary_key=True, autoincrement=True)
     # 哈希信息，外键到 FileHash

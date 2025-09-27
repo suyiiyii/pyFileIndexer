@@ -51,14 +51,14 @@ class FileCreator:
     def create_text_file(path: Path, content: str) -> Path:
         """创建文本文件"""
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding='utf-8')
+        path.write_text(content, encoding="utf-8")
         return path
 
     @staticmethod
-    def create_binary_file(path: Path, size: int, pattern: bytes = b'\x00') -> Path:
+    def create_binary_file(path: Path, size: int, pattern: bytes = b"\x00") -> Path:
         """创建指定大小的二进制文件"""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             # 如果pattern长度为1，重复pattern
             if len(pattern) == 1:
                 f.write(pattern * size)
@@ -75,12 +75,14 @@ class FileCreator:
     def create_random_file(path: Path, size: int) -> Path:
         """创建指定大小的随机内容文件"""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(os.urandom(size))
         return path
 
     @staticmethod
-    def create_structured_directory(base_path: Path, structure: Dict[str, Any]) -> Dict[str, Path]:
+    def create_structured_directory(
+        base_path: Path, structure: Dict[str, Any]
+    ) -> Dict[str, Path]:
         """
         根据结构描述创建目录和文件
 
@@ -107,7 +109,7 @@ class FileCreator:
                     # 文件配置
                     if item["type"] == "binary":
                         size = item.get("size", 1024)
-                        pattern = item.get("pattern", b'\x00')
+                        pattern = item.get("pattern", b"\x00")
                         FileCreator.create_binary_file(item_path, size, pattern)
                     elif item["type"] == "random":
                         size = item.get("size", 1024)
@@ -134,12 +136,12 @@ class HashVerifier:
     def calculate_file_hashes(file_path: Path) -> Dict[str, str]:
         """计算文件的所有哈希值"""
         hashes = {
-            'md5': hashlib.md5(),
-            'sha1': hashlib.sha1(),
-            'sha256': hashlib.sha256()
+            "md5": hashlib.md5(),
+            "sha1": hashlib.sha1(),
+            "sha256": hashlib.sha256(),
         }
 
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             while chunk := f.read(8192):
                 for hash_obj in hashes.values():
                     hash_obj.update(chunk)
@@ -175,12 +177,14 @@ class DatabaseInspector:
         """获取文件数量"""
         with self.db_manager.session_factory() as session:
             from models import FileMeta
+
             return session.query(FileMeta).count()
 
     def get_hash_count(self) -> int:
         """获取哈希数量"""
         with self.db_manager.session_factory() as session:
             from models import FileHash
+
             return session.query(FileHash).count()
 
     def get_duplicate_files(self) -> List[List[str]]:
@@ -190,13 +194,12 @@ class DatabaseInspector:
             from sqlalchemy import func
 
             # 查找有多个文件引用的哈希
-            duplicate_hashes = session.query(
-                FileMeta.hash_id
-            ).group_by(
-                FileMeta.hash_id
-            ).having(
-                func.count(FileMeta.id) > 1
-            ).all()
+            duplicate_hashes = (
+                session.query(FileMeta.hash_id)
+                .group_by(FileMeta.hash_id)
+                .having(func.count(FileMeta.id) > 1)
+                .all()
+            )
 
             duplicates = []
             for (hash_id,) in duplicate_hashes:
@@ -210,6 +213,7 @@ class DatabaseInspector:
         """获取指定机器的文件列表"""
         with self.db_manager.session_factory() as session:
             from models import FileMeta
+
             files = session.query(FileMeta).filter_by(machine=machine_name).all()
             return [f.path for f in files]
 
@@ -217,6 +221,7 @@ class DatabaseInspector:
         """获取指定操作类型的文件列表"""
         with self.db_manager.session_factory() as session:
             from models import FileMeta
+
             files = session.query(FileMeta).filter_by(operation=operation).all()
             return [f.path for f in files]
 
@@ -259,6 +264,7 @@ class MemoryMonitor:
     def __init__(self):
         try:
             import psutil
+
             self.psutil = psutil
             self.process = psutil.Process()
             self.available = True
@@ -309,7 +315,9 @@ class TestEnvironment:
                 file_path.unlink()
 
         # 删除目录（从最深层开始）
-        for dir_path in sorted(self.created_dirs, key=lambda p: len(p.parts), reverse=True):
+        for dir_path in sorted(
+            self.created_dirs, key=lambda p: len(p.parts), reverse=True
+        ):
             if dir_path.exists() and not any(dir_path.iterdir()):
                 dir_path.rmdir()
 
@@ -329,7 +337,9 @@ class MockSettings:
     def __getattr__(self, name):
         if name in self.values:
             return self.values[name]
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
 
     def get(self, name, default=None):
         return self.values.get(name, default)
@@ -338,7 +348,9 @@ class MockSettings:
         self.values[name] = value
 
 
-def wait_for_condition(condition_func, timeout: float = 5.0, interval: float = 0.1) -> bool:
+def wait_for_condition(
+    condition_func, timeout: float = 5.0, interval: float = 0.1
+) -> bool:
     """
     等待条件成立
 
@@ -371,14 +383,16 @@ def generate_test_data(count: int, prefix: str = "test") -> List[Dict[str, Any]]
     """
     data = []
     for i in range(count):
-        data.append({
-            "id": i,
-            "name": f"{prefix}_{i:04d}",
-            "content": f"Test content for {prefix} item {i}",
-            "timestamp": datetime.now() - timedelta(days=i),
-            "size": (i + 1) * 1024,
-            "hash": hashlib.md5(f"{prefix}_{i}".encode()).hexdigest()
-        })
+        data.append(
+            {
+                "id": i,
+                "name": f"{prefix}_{i:04d}",
+                "content": f"Test content for {prefix} item {i}",
+                "timestamp": datetime.now() - timedelta(days=i),
+                "size": (i + 1) * 1024,
+                "hash": hashlib.md5(f"{prefix}_{i}".encode()).hexdigest(),
+            }
+        )
     return data
 
 
@@ -415,7 +429,7 @@ class ProgressTracker:
                 "percentage": percentage,
                 "elapsed": elapsed,
                 "rate": rate,
-                "eta": eta
+                "eta": eta,
             }
 
     def is_complete(self) -> bool:

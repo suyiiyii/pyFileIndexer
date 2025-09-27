@@ -5,6 +5,7 @@ from typing import Generator, Dict, Any, Optional
 import pytest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
 
 from database import DatabaseManager, Base
@@ -56,7 +57,7 @@ def sample_file_hash() -> FileHash:
         size=1024,
         md5="d41d8cd98f00b204e9800998ecf8427e",
         sha1="da39a3ee5e6b4b0d3255bfef95601890afd80709",
-        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     )
 
 
@@ -71,7 +72,7 @@ def sample_file_meta() -> FileMeta:
         created=datetime(2024, 1, 1, 12, 0, 0),
         modified=datetime(2024, 1, 1, 12, 0, 0),
         scanned=datetime(2024, 1, 1, 12, 0, 0),
-        operation="ADD"
+        operation="ADD",
     )
 
 
@@ -97,7 +98,7 @@ def test_files(temp_dir: Path) -> Dict[str, Path]:
 
     # 创建二进制文件
     binary_file = temp_dir / "binary.bin"
-    binary_file.write_bytes(b'\x00\x01\x02\x03' * 256)
+    binary_file.write_bytes(b"\x00\x01\x02\x03" * 256)
     files["binary"] = binary_file
 
     # 创建重复内容的文件
@@ -227,7 +228,7 @@ def cli_test_directory(temp_dir: Path) -> Dict[str, Path]:
 
     # 创建二进制文件
     binary_file = test_root / "binary.bin"
-    binary_file.write_bytes(b'\x00\x01\x02\x03\x04\x05' * 1000)
+    binary_file.write_bytes(b"\x00\x01\x02\x03\x04\x05" * 1000)
     result["binary.bin"] = binary_file
 
     # 创建子目录和嵌套文件
@@ -292,7 +293,9 @@ __pycache__
 
 
 @pytest.fixture
-def cli_test_with_ignore(cli_test_directory: Dict[str, Path], cli_ignore_file_content: str) -> Dict[str, Path]:
+def cli_test_with_ignore(
+    cli_test_directory: Dict[str, Path], cli_ignore_file_content: str
+) -> Dict[str, Path]:
     """创建包含.ignore文件的CLI测试目录"""
     test_root = cli_test_directory["root"]
 
@@ -327,22 +330,17 @@ def archive_test_files() -> Dict[str, str]:
         "readme.txt": "This is a readme file in the archive",
         "config.json": '{"name": "test", "version": "1.0"}',
         "empty.txt": "",
-
         # 子目录中的文件
         "docs/guide.md": "# User Guide\n\nThis is a guide.",
         "docs/api.txt": "API documentation content",
-
         # 更深层嵌套
         "src/main/java/App.java": "public class App { }",
         "src/test/TestApp.java": "public class TestApp { }",
-
         # 二进制文件内容（模拟）
         "data/binary.bin": "binary_content_placeholder",
-
         # 重复内容文件（用于测试哈希共享）
         "duplicate1.txt": "duplicate content for testing",
         "copy/duplicate2.txt": "duplicate content for testing",
-
         # 特殊字符文件名
         "files/中文文件.txt": "Chinese filename test",
         "files/spécial-chars.txt": "Special characters test",
@@ -356,49 +354,51 @@ def create_zip_archive(temp_dir: Path, archive_test_files: Dict[str, str]) -> Pa
 
     zip_path = temp_dir / "test_archive.zip"
 
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path, content in archive_test_files.items():
-            if file_path.endswith('.bin'):
+            if file_path.endswith(".bin"):
                 # 二进制文件使用特定的二进制内容
-                binary_content = b'\x00\x01\x02\x03\x04\x05' * 100
+                binary_content = b"\x00\x01\x02\x03\x04\x05" * 100
                 zf.writestr(file_path, binary_content)
             else:
-                zf.writestr(file_path, content.encode('utf-8'))
+                zf.writestr(file_path, content.encode("utf-8"))
 
     return zip_path
 
 
 @pytest.fixture
-def create_tar_archives(temp_dir: Path, archive_test_files: Dict[str, str]) -> Dict[str, Path]:
+def create_tar_archives(
+    temp_dir: Path, archive_test_files: Dict[str, str]
+) -> Dict[str, Path]:
     """创建各种TAR格式的压缩包"""
     import tarfile
     import io
 
     archives = {}
     tar_formats = {
-        'tar': ('test_archive.tar', ''),
-        'tar.gz': ('test_archive.tar.gz', 'gz'),
-        'tar.bz2': ('test_archive.tar.bz2', 'bz2'),
-        'tar.xz': ('test_archive.tar.xz', 'xz'),
+        "tar": ("test_archive.tar", ""),
+        "tar.gz": ("test_archive.tar.gz", "gz"),
+        "tar.bz2": ("test_archive.tar.bz2", "bz2"),
+        "tar.xz": ("test_archive.tar.xz", "xz"),
     }
 
     for format_name, (filename, compression) in tar_formats.items():
         archive_path = temp_dir / filename
-        mode = f'w:{compression}' if compression else 'w'
+        mode = f"w:{compression}" if compression else "w"
 
         try:
             with tarfile.open(archive_path, mode) as tf:
                 for file_path, content in archive_test_files.items():
                     info = tarfile.TarInfo(name=file_path)
 
-                    if file_path.endswith('.bin'):
+                    if file_path.endswith(".bin"):
                         # 二进制文件
-                        binary_content = b'\x00\x01\x02\x03\x04\x05' * 100
+                        binary_content = b"\x00\x01\x02\x03\x04\x05" * 100
                         info.size = len(binary_content)
                         tf.addfile(info, io.BytesIO(binary_content))
                     else:
                         # 文本文件
-                        content_bytes = content.encode('utf-8')
+                        content_bytes = content.encode("utf-8")
                         info.size = len(content_bytes)
                         tf.addfile(info, io.BytesIO(content_bytes))
 
@@ -411,10 +411,13 @@ def create_tar_archives(temp_dir: Path, archive_test_files: Dict[str, str]) -> D
 
 
 @pytest.fixture
-def create_rar_archive(temp_dir: Path, archive_test_files: Dict[str, str]) -> Optional[Path]:
+def create_rar_archive(
+    temp_dir: Path, archive_test_files: Dict[str, str]
+) -> Optional[Path]:
     """创建RAR压缩包（如果可能的话）"""
     try:
         import rarfile
+
         # RAR文件的创建比较复杂，需要外部工具
         # 这里我们创建一个简单的测试用例，或者跳过
         # 实际项目中可能需要预先准备好的RAR文件
@@ -424,7 +427,9 @@ def create_rar_archive(temp_dir: Path, archive_test_files: Dict[str, str]) -> Op
 
 
 @pytest.fixture
-def cli_archive_test_directory(temp_dir: Path, create_zip_archive: Path, create_tar_archives: Dict[str, Path]) -> Dict[str, Path]:
+def cli_archive_test_directory(
+    temp_dir: Path, create_zip_archive: Path, create_tar_archives: Dict[str, Path]
+) -> Dict[str, Path]:
     """创建包含各种压缩包的测试目录"""
     test_root = temp_dir / "archive_test_root"
     test_root.mkdir(exist_ok=True)
@@ -434,6 +439,7 @@ def cli_archive_test_directory(temp_dir: Path, create_zip_archive: Path, create_
     # 复制ZIP文件到测试目录
     zip_dest = test_root / "sample.zip"
     import shutil
+
     shutil.copy2(create_zip_archive, zip_dest)
     result["zip_file"] = zip_dest
 
@@ -467,20 +473,20 @@ def large_archive_test_directory(temp_dir: Path) -> Dict[str, Path]:
 
     # 创建一个大的压缩包（超过500MB限制）
     large_zip = test_root / "large_archive.zip"
-    with zipfile.ZipFile(large_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(large_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         # 写入一个大文件
-        large_content = b'X' * (600 * 1024 * 1024)  # 600MB
+        large_content = b"X" * (600 * 1024 * 1024)  # 600MB
         zf.writestr("large_file.bin", large_content)
 
     result["large_zip"] = large_zip
 
     # 创建一个包含大文件的普通大小压缩包
     normal_zip_large_files = test_root / "normal_with_large_files.zip"
-    with zipfile.ZipFile(normal_zip_large_files, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(normal_zip_large_files, "w", zipfile.ZIP_DEFLATED) as zf:
         # 小文件
         zf.writestr("small.txt", "small content")
         # 大文件（超过100MB的单文件限制）
-        large_file_content = b'Y' * (150 * 1024 * 1024)  # 150MB
+        large_file_content = b"Y" * (150 * 1024 * 1024)  # 150MB
         zf.writestr("large_internal_file.bin", large_file_content)
         # 另一个小文件
         zf.writestr("another_small.txt", "another small content")
@@ -495,6 +501,7 @@ def clear_batch_processor():
     """在每个测试前后清理批量处理器"""
     try:
         from main import batch_processor
+
         batch_processor.clear()
     except ImportError:
         pass
@@ -503,6 +510,7 @@ def clear_batch_processor():
 
     try:
         from main import batch_processor
+
         batch_processor.clear()
     except ImportError:
         pass

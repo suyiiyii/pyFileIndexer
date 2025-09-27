@@ -12,7 +12,11 @@ from config import settings
 from database import db_manager
 from models import FileHash, FileMeta
 from tqdm import tqdm
-from archive_scanner import is_archive_file, create_archive_scanner, calculate_hash_from_data
+from archive_scanner import (
+    is_archive_file,
+    create_archive_scanner,
+    calculate_hash_from_data,
+)
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -119,11 +123,9 @@ class BatchProcessor:
     def add_file(self, file_meta, file_hash, operation):
         """添加文件到批量处理队列"""
         with self.lock:
-            self.batch_data.append({
-                'file_meta': file_meta,
-                'file_hash': file_hash,
-                'operation': operation
-            })
+            self.batch_data.append(
+                {"file_meta": file_meta, "file_hash": file_hash, "operation": operation}
+            )
 
             # 检查是否需要刷新批量
             if len(self.batch_data) >= self.batch_size:
@@ -200,10 +202,14 @@ def scan_archive_file(archive_path: Path):
     # 检查压缩包大小限制
     max_size = getattr(settings, "MAX_ARCHIVE_SIZE", 500 * 1024 * 1024)  # 默认500MB
     if archive_path.stat().st_size > max_size:
-        logger.warning(f"Skipping large archive: {archive_path} ({archive_path.stat().st_size} bytes)")
+        logger.warning(
+            f"Skipping large archive: {archive_path} ({archive_path.stat().st_size} bytes)"
+        )
         return
 
-    max_archive_file_size = getattr(settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024)
+    max_archive_file_size = getattr(
+        settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024
+    )
     scanner = create_archive_scanner(archive_path, max_archive_file_size)
     if not scanner:
         logger.warning(f"Cannot create scanner for archive: {archive_path}")
@@ -226,9 +232,15 @@ def scan_archive_file(archive_path: Path):
                 if existing_result:
                     # 文件已存在，检查是否需要更新
                     existing_meta, existing_hash = existing_result
-                    if (existing_hash and entry.size == getattr(existing_hash, "size", None) and
-                        getattr(file_meta, "modified", None) == getattr(existing_meta, "modified", None)):
-                        logger.debug(f"Skipping unchanged archived file: {virtual_path}")
+                    if (
+                        existing_hash
+                        and entry.size == getattr(existing_hash, "size", None)
+                        and getattr(file_meta, "modified", None)
+                        == getattr(existing_meta, "modified", None)
+                    ):
+                        logger.debug(
+                            f"Skipping unchanged archived file: {virtual_path}"
+                        )
                         continue
                     file_meta.operation = "MOD"  # type: ignore[attr-defined]
 
@@ -352,7 +364,10 @@ if __name__ == "__main__":
         "--port", type=int, help="Web server port (default: 8000).", default=8000
     )
     parser.add_argument(
-        "--host", type=str, help="Web server host (default: 0.0.0.0).", default="0.0.0.0"
+        "--host",
+        type=str,
+        help="Web server host (default: 0.0.0.0).",
+        default="0.0.0.0",
     )
 
     args = parser.parse_args()
@@ -368,6 +383,7 @@ if __name__ == "__main__":
     if args.web:
         # Web 服务器模式
         from web_server import start_web_server
+
         start_web_server(args.db_path, args.host, args.port)
     else:
         # 文件扫描模式

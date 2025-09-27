@@ -96,7 +96,7 @@ class TestDatabaseManager:
             name="unique_test_file.txt",
             path="/test/unique_test_file.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
         memory_db_manager.add_file(file_meta)
 
@@ -119,12 +119,14 @@ class TestDatabaseManager:
             name="path_test.txt",
             path="/unique/path/path_test.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
         memory_db_manager.add_file(file_meta)
 
         # 查询测试
-        retrieved_file = memory_db_manager.get_file_by_path("/unique/path/path_test.txt")
+        retrieved_file = memory_db_manager.get_file_by_path(
+            "/unique/path/path_test.txt"
+        )
         assert retrieved_file is not None
         assert retrieved_file.path == "/unique/path/path_test.txt"
 
@@ -141,7 +143,7 @@ class TestDatabaseManager:
             size=2048,
             md5="test_md5_by_id",
             sha1="test_sha1_by_id",
-            sha256="test_sha256_by_id"
+            sha256="test_sha256_by_id",
         )
         hash_id = memory_db_manager.add_hash(file_hash)
 
@@ -163,7 +165,7 @@ class TestDatabaseManager:
             size=4096,
             md5="unique_md5_hash",
             sha1="unique_sha1_hash",
-            sha256="unique_sha256_hash"
+            sha256="unique_sha256_hash",
         )
         memory_db_manager.add_hash(file_hash)
 
@@ -171,14 +173,18 @@ class TestDatabaseManager:
         hash_dict = {
             "md5": "unique_md5_hash",
             "sha1": "unique_sha1_hash",
-            "sha256": "unique_sha256_hash"
+            "sha256": "unique_sha256_hash",
         }
         retrieved_hash = memory_db_manager.get_hash_by_hash(hash_dict)
         assert retrieved_hash is not None
         assert retrieved_hash.md5 == "unique_md5_hash"
 
         # 查询不存在的哈希
-        nonexistent_hash = {"md5": "nonexistent", "sha1": "nonexistent", "sha256": "nonexistent"}
+        nonexistent_hash = {
+            "md5": "nonexistent",
+            "sha1": "nonexistent",
+            "sha256": "nonexistent",
+        }
         not_found = memory_db_manager.get_hash_by_hash(nonexistent_hash)
         assert not_found is None
 
@@ -190,14 +196,14 @@ class TestDatabaseManager:
             size=1024,
             md5="new_hash_md5",
             sha1="new_hash_sha1",
-            sha256="new_hash_sha256"
+            sha256="new_hash_sha256",
         )
 
         file_meta = FileMeta(
             name="new_file.txt",
             path="/test/new_file.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         memory_db_manager.add(file_meta, file_hash)
@@ -219,7 +225,7 @@ class TestDatabaseManager:
             size=2048,
             md5="existing_md5",
             sha1="existing_sha1",
-            sha256="existing_sha256"
+            sha256="existing_sha256",
         )
         hash_id = memory_db_manager.add_hash(existing_hash)
 
@@ -228,7 +234,7 @@ class TestDatabaseManager:
             size=2048,
             md5="existing_md5",
             sha1="existing_sha1",
-            sha256="existing_sha256"
+            sha256="existing_sha256",
         )
 
         # 添加使用相同哈希的文件
@@ -236,7 +242,7 @@ class TestDatabaseManager:
             name="duplicate_content.txt",
             path="/test/duplicate_content.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         memory_db_manager.add(file_meta, duplicate_hash)
@@ -254,7 +260,7 @@ class TestDatabaseManager:
             name="no_hash_file.txt",
             path="/test/no_hash_file.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         memory_db_manager.add(file_meta, None)
@@ -348,7 +354,7 @@ class TestDatabaseErrors:
             size=1024,
             md5="uncommitted_md5",
             sha1="uncommitted_sha1",
-            sha256="uncommitted_sha256"
+            sha256="uncommitted_sha256",
         )
 
         # 添加但不提交
@@ -369,14 +375,14 @@ class TestDatabaseErrors:
             size=1024,
             md5="duplicate_md5",
             sha1="duplicate_sha1",
-            sha256="duplicate_sha256"
+            sha256="duplicate_sha256",
         )
 
         hash2 = FileHash(
             size=1024,
             md5="duplicate_md5",
             sha1="duplicate_sha1",
-            sha256="duplicate_sha256"
+            sha256="duplicate_sha256",
         )
 
         # 第一次添加
@@ -393,14 +399,14 @@ class TestDatabaseErrors:
             name="test_duplicate.txt",
             path="/test/test_duplicate.txt",
             machine="test_machine",
-            operation="ADD"
+            operation="ADD",
         )
 
         duplicate_hash = FileHash(
             size=1024,
             md5="duplicate_md5",
             sha1="duplicate_sha1",
-            sha256="duplicate_sha256"
+            sha256="duplicate_sha256",
         )
 
         memory_db_manager.add(file_meta, duplicate_hash)
