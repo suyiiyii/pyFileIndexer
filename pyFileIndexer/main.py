@@ -8,15 +8,16 @@ import threading
 from pathlib import Path
 from typing import Any, Optional, Union
 
+from archive_scanner import (
+    calculate_hash_from_data,
+    create_archive_scanner,
+    is_archive_file,
+)
+from cached_config import cached_config
 from config import settings
 from database import db_manager
 from models import FileHash, FileMeta
 from tqdm import tqdm
-from archive_scanner import (
-    is_archive_file,
-    create_archive_scanner,
-    calculate_hash_from_data,
-)
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -61,16 +62,20 @@ def human_size(
 
 
 def get_hashes(file_path: Union[str, Path]) -> dict[str, str]:
-    """Calculate MD5, SHA1, and SHA256 hashes of a file using hashlib."""
+    """Calculate MD5, SHA1, and SHA256 hashes of a file using hashlib with optimized I/O."""
     md5 = hashlib.md5()
     sha1 = hashlib.sha1()
     sha256 = hashlib.sha256()
 
-    with open(file_path, "rb") as f:
+    # 优化：增大读取缓冲区从256KB到2MB，减少系统调用次数
+    chunk_size = 1024 * 1024 * 2  # 2MB
+
+    with open(file_path, "rb", buffering=chunk_size) as f:
         while True:
-            chunk = f.read(1024 * 256)
+            chunk = f.read(chunk_size)
             if not chunk:
                 break
+            # 单次循环更新所有哈希算法，提高效率
             md5.update(chunk)
             sha1.update(chunk)
             sha256.update(chunk)
@@ -82,21 +87,28 @@ def get_hashes(file_path: Union[str, Path]) -> dict[str, str]:
     }
 
 
-def get_metadata(file: Path, stat_result: os.stat_result = None) -> FileMeta:
+def get_metadata(file: Path, stat_result: os.stat_result | None = None) -> FileMeta:
     """获取文件的元数据，提供合理默认值。"""
     if stat_result is None:
         stat_result = file.stat()
 
-    # 提供合理的默认值，而不是严格要求配置
-    scanned = getattr(settings, "SCANNED", datetime.datetime.now())
-    machine = getattr(settings, "MACHINE_NAME", "localhost")
+    # 优先使用缓存配置，但在测试环境中允许 mock 覆盖
+    # 这样既提升了性能，又保持了测试兼容性
+    try:
+        # 首先尝试从 settings 获取（支持测试中的 mock）
+        scanned = getattr(settings, "SCANNED", cached_config.scanned)
+        machine = getattr(settings, "MACHINE_NAME", cached_config.machine_name)
 
-    # 如果配置的是字符串时间，尝试解析
-    if isinstance(scanned, str):
-        try:
-            scanned = datetime.datetime.fromisoformat(scanned)
-        except ValueError:
-            scanned = datetime.datetime.now()
+        # 如果配置的是字符串时间，尝试解析
+        if isinstance(scanned, str):
+            try:
+                scanned = datetime.datetime.fromisoformat(scanned)
+            except ValueError:
+                scanned = cached_config.scanned
+    except Exception:
+        # 如果出现任何问题，回退到缓存配置
+        scanned = cached_config.scanned
+        machine = cached_config.machine_name
 
     meta = FileMeta(
         name=file.name,
@@ -191,7 +203,7 @@ def scan_file(file: Path):
     batch_processor.add_file(meta, file_hash, meta.operation)
 
     # 如果启用了压缩包扫描并且是压缩包文件，扫描内部文件
-    if getattr(settings, "SCAN_ARCHIVES", True) and is_archive_file(file):
+    if cached_config.scan_archives and is_archive_file(file):
         scan_archive_file(file)
 
 
@@ -200,24 +212,22 @@ def scan_archive_file(archive_path: Path):
     logger.info(f"Scanning archive: {archive_path}")
 
     # 检查压缩包大小限制
-    max_size = getattr(settings, "MAX_ARCHIVE_SIZE", 500 * 1024 * 1024)  # 默认500MB
+    max_size = cached_config.max_archive_size
     if archive_path.stat().st_size > max_size:
         logger.warning(
             f"Skipping large archive: {archive_path} ({archive_path.stat().st_size} bytes)"
         )
         return
 
-    max_archive_file_size = getattr(
-        settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024
-    )
+    max_archive_file_size = cached_config.max_archive_file_size
     scanner = create_archive_scanner(archive_path, max_archive_file_size)
     if not scanner:
         logger.warning(f"Cannot create scanner for archive: {archive_path}")
         return
 
     try:
-        machine = getattr(settings, "MACHINE_NAME", "localhost")
-        scanned = getattr(settings, "SCANNED", datetime.datetime.now())
+        machine = cached_config.machine_name
+        scanned = cached_config.scanned
 
         for entry in scanner.scan_entries():
             try:
@@ -327,8 +337,10 @@ def scan(path: Union[str, Path]):
         return
     if isinstance(path, str):
         path = Path(path)
-    # Dynaconf: set attribute
-    setattr(settings, "SCANNED", datetime.datetime.now())
+    # 更新扫描时间到缓存
+    scan_time = datetime.datetime.now()
+    cached_config.update_scanned_time(scan_time)
+    setattr(settings, "SCANNED", scan_time)
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
     filepaths: "queue.Queue[Path]" = queue.Queue(-1)
     scan_directory(path, filepaths)
@@ -375,6 +387,7 @@ if __name__ == "__main__":
     # 传入的机器名称覆盖配置文件中的机器名称
     if args.machine_name:
         setattr(settings, "MACHINE_NAME", args.machine_name)
+        cached_config.update_machine_name(args.machine_name)
 
     # 初始化数据库和日志
     db_manager.init("sqlite:///" + str(args.db_path))
