@@ -381,9 +381,22 @@ def scan(path: Union[str, Path]):
 
     num_threads = os.cpu_count() or 1
 
-    # 第一阶段：使用BFS方式并发遍历目录
-    logger.info(f"使用 {num_threads} 个线程进行目录遍历（BFS方式）")
+    logger.info(f"使用 {num_threads} 个线程并行进行目录遍历和文件处理")
 
+    # 启动文件处理worker线程（在后台持续工作）
+    workers = []
+    file_count = threading.Event()  # 用于通知文件处理完成
+
+    for i in range(num_threads):
+        worker = threading.Thread(
+            target=scan_file_worker,
+            args=(file_queue, None),  # 暂时不使用进度条
+            name=f"FileWorker-{i}"
+        )
+        worker.start()
+        workers.append(worker)
+
+    # 同时进行目录遍历（BFS方式）
     with ThreadPoolExecutor(max_workers=num_threads) as dir_executor:
         # 使用集合跟踪未完成的futures，避免列表无限增长
         pending_futures = set()
@@ -411,28 +424,15 @@ def scan(path: Union[str, Path]):
                 logger.error(f"Error submitting directory scan task: {e}")
                 dir_queue.task_done()
 
-    logger.info(f"目录遍历完成，共发现 {file_queue.qsize()} 个文件")
+    logger.info("目录遍历完成，等待文件处理完成...")
 
     # 为每个worker线程添加终止信号
     for _ in range(num_threads):
         file_queue.put(Path())  # Dummy Path to signal end
 
-    # 第二阶段：启动多个worker线程处理文件
-    logger.info(f"启动 {num_threads} 个worker线程处理文件")
-    workers = []
-    with tqdm(total=file_queue.qsize() - num_threads) as pbar:  # 减去终止信号数量
-        for i in range(num_threads):
-            worker = threading.Thread(
-                target=scan_file_worker,
-                args=(file_queue, pbar),
-                name=f"FileWorker-{i}"
-            )
-            worker.start()
-            workers.append(worker)
-
-        # 等待所有worker线程完成
-        for worker in workers:
-            worker.join()
+    # 等待所有worker线程完成
+    for worker in workers:
+        worker.join()
 
     # 刷新剩余的批量数据
     batch_processor.flush()
