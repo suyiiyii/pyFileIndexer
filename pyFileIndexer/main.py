@@ -5,6 +5,7 @@ import logging
 import os
 import queue
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -298,36 +299,60 @@ def scan_file_worker(
     logger.info("扫描工作线程结束。")
 
 
-def scan_directory(directory: Path, output_queue: "queue.Queue[Path]"):
-    """遍历目录下的所有文件。"""
-    if not stop_event.is_set():
-        logger.debug(f"队列大小：{output_queue.qsize()}")
+def should_skip_directory(path: Path) -> bool:
+    """检查目录是否应该跳过。"""
+    if path.name in ignore_dirs:
+        return True
+    if path.name.startswith("."):
+        logger.info(f"Skipping start with . : {path}")
+        return True
+    if path.name.startswith("_"):
+        logger.info(f"Skipping start with _ : {path}")
+        return True
+    for ignore_partial in ignore_partials_dirs:
+        if ignore_partial in path.as_posix():
+            return True
+    return False
+
+
+def scan_directory(directory: Path, output_queue: "queue.Queue[Path]", executor: Optional[ThreadPoolExecutor] = None):
+    """遍历目录下的所有文件，支持多线程并发遍历子目录。"""
+    if stop_event.is_set():
+        return
+
+    logger.debug(f"队列大小：{output_queue.qsize()}")
+    subdirs = []
+
+    try:
         for path in directory.iterdir():
             logger.debug(f":开始遍历 {path}")
             try:
                 if path.is_dir():
-                    if path.name in ignore_dirs:
+                    if should_skip_directory(path):
                         continue
-                    if path.name.startswith("."):
-                        logger.info(f"Skipping start with . : {path}")
-                        continue
-                    if path.name.startswith("_"):
-                        logger.info(f"Skipping start with _ : {path}")
-                        continue
-                    skip = False
-                    for ignore_partial in ignore_partials_dirs:
-                        if ignore_partial in path.as_posix():
-                            skip = True
-                            continue
-                    if skip:
-                        continue
-                    scan_directory(path, output_queue)
+                    subdirs.append(path)
                 else:
                     logger.debug(f":添加到扫描队列 {path}")
                     output_queue.put(path)
             except IOError as e:
-                logger.error(f"Error: {e}")
-                logger.error(e)
+                logger.error(f"Error processing {path}: {e}")
+    except IOError as e:
+        logger.error(f"Error iterating directory {directory}: {e}")
+        return
+
+    # 如果有线程池，并发处理子目录；否则递归处理
+    if executor and subdirs:
+        futures = [executor.submit(scan_directory, subdir, output_queue, executor) for subdir in subdirs]
+        # 等待所有子目录扫描完成
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Error in subdirectory scan: {e}")
+    else:
+        # 单线程模式，递归处理
+        for subdir in subdirs:
+            scan_directory(subdir, output_queue, executor)
 
 
 def scan(path: Union[str, Path]):
@@ -341,13 +366,36 @@ def scan(path: Union[str, Path]):
     scan_time = datetime.datetime.now()
     cached_config.update_scanned_time(scan_time)
     setattr(settings, "SCANNED", scan_time)
+
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
     filepaths: "queue.Queue[Path]" = queue.Queue(-1)
-    scan_directory(path, filepaths)
-    for _ in range(os.cpu_count() or 1):
+
+    # 使用线程池并发遍历目录
+    num_threads = os.cpu_count() or 1
+    logger.info(f"使用 {num_threads} 个线程进行目录遍历")
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        scan_directory(path, filepaths, executor)
+
+    # 为每个worker线程添加终止信号
+    for _ in range(num_threads):
         filepaths.put(Path())  # Dummy Path to signal end
+
+    # 启动多个worker线程处理文件
+    logger.info(f"启动 {num_threads} 个worker线程处理文件")
+    workers = []
     with tqdm(total=filepaths.qsize()) as pbar:
-        scan_file_worker(filepaths, pbar=pbar)
+        for i in range(num_threads):
+            worker = threading.Thread(
+                target=scan_file_worker,
+                args=(filepaths, pbar),
+                name=f"FileWorker-{i}"
+            )
+            worker.start()
+            workers.append(worker)
+
+        # 等待所有worker线程完成
+        for worker in workers:
+            worker.join()
 
     # 刷新剩余的批量数据
     batch_processor.flush()
