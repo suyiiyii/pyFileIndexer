@@ -4,6 +4,8 @@ import hashlib
 import logging
 import os
 import queue
+import signal
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -30,6 +32,15 @@ formatter = logging.Formatter(
 )
 stream_hander.setFormatter(formatter)
 logger.addHandler(stream_hander)
+
+
+def signal_handler(signum, frame):
+    """处理中断信号 (Ctrl+C)"""
+    logger.warning(f"收到中断信号 {signum}，正在停止扫描...")
+    stop_event.set()
+    # 给线程一些时间来响应 stop_event
+    # 如果再次按 Ctrl+C，则强制退出
+    signal.signal(signal.SIGINT, lambda s, f: sys.exit(1))
 
 
 def init_file_logger(log_path: str):
@@ -372,20 +383,23 @@ def scan(path: Union[str, Path]):
     # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
     filepaths: "queue.Queue[Path]" = queue.Queue(-1)
 
-    # 使用线程池并发遍历目录
     num_threads = os.cpu_count() or 1
+
+    # 第一阶段：使用独立的线程池并发遍历目录
     logger.info(f"使用 {num_threads} 个线程进行目录遍历")
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        scan_directory(path, filepaths, executor)
+    with ThreadPoolExecutor(max_workers=num_threads) as dir_executor:
+        scan_directory(path, filepaths, dir_executor)
+
+    logger.info(f"目录遍历完成，共发现 {filepaths.qsize()} 个文件")
 
     # 为每个worker线程添加终止信号
     for _ in range(num_threads):
         filepaths.put(Path())  # Dummy Path to signal end
 
-    # 启动多个worker线程处理文件
+    # 第二阶段：启动多个worker线程处理文件（使用独立的线程，不是线程池）
     logger.info(f"启动 {num_threads} 个worker线程处理文件")
     workers = []
-    with tqdm(total=filepaths.qsize()) as pbar:
+    with tqdm(total=filepaths.qsize() - num_threads) as pbar:  # 减去终止信号数量
         for i in range(num_threads):
             worker = threading.Thread(
                 target=scan_file_worker,
@@ -453,10 +467,19 @@ if __name__ == "__main__":
         if not args.path:
             parser.error("Path is required when not using --web mode")
 
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, signal_handler)
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, signal_handler)
+
         try:
             scan(args.path)
         except KeyboardInterrupt:
-            stop_event.set()
-            logger.error("KeyboardInterrupt")
+            # 第一次 Ctrl+C 由 signal_handler 处理
+            # 这里捕获是为了避免堆栈输出
+            logger.warning("扫描已中断")
         finally:
-            logger.info("扫描完成。")
+            if stop_event.is_set():
+                logger.info("扫描已被用户中断。")
+            else:
+                logger.info("扫描完成。")
