@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 stop_event = threading.Event()
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 stream_hander = logging.StreamHandler()
 
 formatter = logging.Formatter(
@@ -303,7 +303,7 @@ def scan_file_worker(
             if file == Path():  # Dummy Path signals end
                 break
             current_file = file
-            logger.info(f"Scanning: {file}")
+            logger.debug(f"Scanning: {file}")
             scan_file(file)
             if pbar:
                 pbar.update(1)
@@ -385,20 +385,24 @@ def scan(path: Union[str, Path]):
     logger.info(f"使用 {num_threads} 个线程进行目录遍历（BFS方式）")
 
     with ThreadPoolExecutor(max_workers=num_threads) as dir_executor:
-        futures = []
+        # 使用集合跟踪未完成的futures，避免列表无限增长
+        pending_futures = set()
 
         while not stop_event.is_set():
+            # 清理已完成的futures
+            pending_futures = {f for f in pending_futures if not f.done()}
+
             # 尝试从目录队列获取目录
             try:
                 directory = dir_queue.get(timeout=0.1)
                 # 提交目录扫描任务并记录future
                 future = dir_executor.submit(scan_directory, directory, file_queue, dir_queue)
-                futures.append(future)
+                pending_futures.add(future)
                 dir_queue.task_done()
             except queue.Empty:
                 # 目录队列为空
                 # 检查是否所有已提交的任务都完成了
-                if dir_queue.empty() and all(f.done() for f in futures):
+                if dir_queue.empty() and len(pending_futures) == 0:
                     # 所有任务完成，目录遍历结束
                     break
                 # 还有任务在执行或队列中可能会有新的目录，继续等待
