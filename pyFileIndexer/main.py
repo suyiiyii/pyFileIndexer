@@ -174,38 +174,41 @@ batch_processor = BatchProcessor()
 
 def scan_file(file: Path):
     """扫描单个文件，收集文件信息并添加到批量处理队列。"""
-    # 优化：只调用一次 file.stat()
-    file_stat = file.stat()
-    meta = get_metadata(file, file_stat)
-    # 默认操作为添加
-    meta.operation = "ADD"  # type: ignore[attr-defined]
+    try:
+        # 优化：只调用一次 file.stat()
+        file_stat = file.stat()
+        meta = get_metadata(file, file_stat)
+        # 默认操作为添加
+        meta.operation = "ADD"  # type: ignore[attr-defined]
 
-    # 检查文件是否已存在（优化：一次查询获取文件和哈希信息）
-    result = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
-    if result:
-        meta_in_db, hash_in_db = result
-        if hash_in_db and file_stat.st_size == getattr(hash_in_db, "size", None):
-            # 如果文件的创建时间和修改时间没有变化
-            if getattr(meta, "created", None) == getattr(
-                meta_in_db, "created", None
-            ) and getattr(meta, "modified", None) == getattr(
-                meta_in_db, "modified", None
-            ):
-                logger.info(f"Skipping: {file}")
-                return
-        # 文件有变化，标记为修改
-        meta.operation = "MOD"  # type: ignore[attr-defined]
+        # 检查文件是否已存在（优化：一次查询获取文件和哈希信息）
+        result = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
+        if result:
+            meta_in_db, hash_in_db = result
+            if hash_in_db and file_stat.st_size == getattr(hash_in_db, "size", None):
+                # 如果文件的创建时间和修改时间没有变化
+                if getattr(meta, "created", None) == getattr(
+                    meta_in_db, "created", None
+                ) and getattr(meta, "modified", None) == getattr(
+                    meta_in_db, "modified", None
+                ):
+                    logger.info(f"Skipping: {file}")
+                    return
+            # 文件有变化，标记为修改
+            meta.operation = "MOD"  # type: ignore[attr-defined]
 
-    # 获取文件哈希
-    hashes = get_hashes(file)
-    file_hash = FileHash(**hashes, size=file_stat.st_size)
+        # 获取文件哈希
+        hashes = get_hashes(file)
+        file_hash = FileHash(**hashes, size=file_stat.st_size)
 
-    # 添加到批量处理队列
-    batch_processor.add_file(meta, file_hash, meta.operation)
+        # 添加到批量处理队列
+        batch_processor.add_file(meta, file_hash, meta.operation)
 
-    # 如果启用了压缩包扫描并且是压缩包文件，扫描内部文件
-    if cached_config.scan_archives and is_archive_file(file):
-        scan_archive_file(file)
+        # 如果启用了压缩包扫描并且是压缩包文件，扫描内部文件
+        if cached_config.scan_archives and is_archive_file(file):
+            scan_archive_file(file)
+    except Exception as e:
+        logger.error(f"Failed to scan file {file}: {type(e).__name__}: {e}")
 
 
 def scan_archive_file(archive_path: Path):
@@ -282,18 +285,21 @@ def scan_file_worker(
 ):
     """文件扫描工作线程。"""
     logger.info("扫描工作线程启动。")
+    current_file = None
     while not stop_event.is_set():
         try:
             file = filepaths.get()
             if file == Path():  # Dummy Path signals end
                 break
+            current_file = file
             logger.info(f"Scanning: {file}")
             scan_file(file)
             if pbar:
                 pbar.update(1)
         except Exception as e:
-            logger.error(f"Error: {e}")
-            logger.error(e)
+            logger.exception(f"Unexpected error in worker thread while processing {current_file}: {type(e).__name__}: {e}")
+            if pbar:
+                pbar.update(1)
         finally:
             filepaths.task_done()
     logger.info("扫描工作线程结束。")
@@ -334,25 +340,21 @@ def scan_directory(directory: Path, output_queue: "queue.Queue[Path]", executor:
                 else:
                     logger.debug(f":添加到扫描队列 {path}")
                     output_queue.put(path)
-            except IOError as e:
-                logger.error(f"Error processing {path}: {e}")
-    except IOError as e:
-        logger.error(f"Error iterating directory {directory}: {e}")
+            except Exception as e:
+                logger.error(f"Error processing path {path}: {type(e).__name__}: {e}")
+    except Exception as e:
+        logger.error(f"Error iterating directory {directory}: {type(e).__name__}: {e}")
         return
 
-    # 如果有线程池，并发处理子目录；否则递归处理
+    # 并发处理子目录
     if executor and subdirs:
         futures = [executor.submit(scan_directory, subdir, output_queue, executor) for subdir in subdirs]
         # 等待所有子目录扫描完成
-        for future in futures:
+        for i, future in enumerate(futures):
             try:
                 future.result()
             except Exception as e:
-                logger.error(f"Error in subdirectory scan: {e}")
-    else:
-        # 单线程模式，递归处理
-        for subdir in subdirs:
-            scan_directory(subdir, output_queue, executor)
+                logger.error(f"Error scanning subdirectory {subdirs[i]}: {type(e).__name__}: {e}")
 
 
 def scan(path: Union[str, Path]):
