@@ -332,44 +332,36 @@ def should_skip_directory(path: Path) -> bool:
     return False
 
 
-def scan_directory(directory: Path, output_queue: "queue.Queue[Path]", executor: Optional[ThreadPoolExecutor] = None):
-    """遍历目录下的所有文件，支持多线程并发遍历子目录。"""
+def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: "queue.Queue[Path]"):
+    """遍历单个目录，将文件放入file_queue，子目录放入dir_queue（非递归，BFS方式）。"""
     if stop_event.is_set():
         return
 
-    logger.debug(f"队列大小：{output_queue.qsize()}")
-    subdirs = []
+    logger.debug(f"正在扫描目录: {directory}")
 
     try:
         for path in directory.iterdir():
-            logger.debug(f":开始遍历 {path}")
+            if stop_event.is_set():
+                break
+
             try:
                 if path.is_dir():
                     if should_skip_directory(path):
+                        logger.debug(f"跳过目录: {path}")
                         continue
-                    subdirs.append(path)
+                    logger.debug(f"发现子目录: {path}")
+                    dir_queue.put(path)  # 将子目录放入目录队列
                 else:
-                    logger.debug(f":添加到扫描队列 {path}")
-                    output_queue.put(path)
+                    logger.debug(f"发现文件: {path}")
+                    file_queue.put(path)  # 将文件放入文件队列
             except Exception as e:
                 logger.error(f"Error processing path {path}: {type(e).__name__}: {e}")
     except Exception as e:
         logger.error(f"Error iterating directory {directory}: {type(e).__name__}: {e}")
-        return
-
-    # 并发处理子目录
-    if executor and subdirs:
-        futures = [executor.submit(scan_directory, subdir, output_queue, executor) for subdir in subdirs]
-        # 等待所有子目录扫描完成
-        for i, future in enumerate(futures):
-            try:
-                future.result()
-            except Exception as e:
-                logger.error(f"Error scanning subdirectory {subdirs[i]}: {type(e).__name__}: {e}")
 
 
 def scan(path: Union[str, Path]):
-    """扫描指定目录。"""
+    """扫描指定目录（使用BFS队列方式，避免递归死锁）。"""
     if not os.path.exists(path):
         logger.error(f"Path not exists: {path}")
         return
@@ -380,30 +372,55 @@ def scan(path: Union[str, Path]):
     cached_config.update_scanned_time(scan_time)
     setattr(settings, "SCANNED", scan_time)
 
-    # 使用生产者消费者模型，先扫描目录，在对获取到的元数据进行处理
-    filepaths: "queue.Queue[Path]" = queue.Queue(-1)
+    # 使用两个队列：目录队列和文件队列
+    dir_queue: "queue.Queue[Path]" = queue.Queue()
+    file_queue: "queue.Queue[Path]" = queue.Queue()
+
+    # 将根目录放入目录队列
+    dir_queue.put(path)
 
     num_threads = os.cpu_count() or 1
 
-    # 第一阶段：使用独立的线程池并发遍历目录
-    logger.info(f"使用 {num_threads} 个线程进行目录遍历")
-    with ThreadPoolExecutor(max_workers=num_threads) as dir_executor:
-        scan_directory(path, filepaths, dir_executor)
+    # 第一阶段：使用BFS方式并发遍历目录
+    logger.info(f"使用 {num_threads} 个线程进行目录遍历（BFS方式）")
 
-    logger.info(f"目录遍历完成，共发现 {filepaths.qsize()} 个文件")
+    with ThreadPoolExecutor(max_workers=num_threads) as dir_executor:
+        futures = []
+
+        while not stop_event.is_set():
+            # 尝试从目录队列获取目录
+            try:
+                directory = dir_queue.get(timeout=0.1)
+                # 提交目录扫描任务并记录future
+                future = dir_executor.submit(scan_directory, directory, file_queue, dir_queue)
+                futures.append(future)
+                dir_queue.task_done()
+            except queue.Empty:
+                # 目录队列为空
+                # 检查是否所有已提交的任务都完成了
+                if dir_queue.empty() and all(f.done() for f in futures):
+                    # 所有任务完成，目录遍历结束
+                    break
+                # 还有任务在执行或队列中可能会有新的目录，继续等待
+                continue
+            except Exception as e:
+                logger.error(f"Error submitting directory scan task: {e}")
+                dir_queue.task_done()
+
+    logger.info(f"目录遍历完成，共发现 {file_queue.qsize()} 个文件")
 
     # 为每个worker线程添加终止信号
     for _ in range(num_threads):
-        filepaths.put(Path())  # Dummy Path to signal end
+        file_queue.put(Path())  # Dummy Path to signal end
 
-    # 第二阶段：启动多个worker线程处理文件（使用独立的线程，不是线程池）
+    # 第二阶段：启动多个worker线程处理文件
     logger.info(f"启动 {num_threads} 个worker线程处理文件")
     workers = []
-    with tqdm(total=filepaths.qsize() - num_threads) as pbar:  # 减去终止信号数量
+    with tqdm(total=file_queue.qsize() - num_threads) as pbar:  # 减去终止信号数量
         for i in range(num_threads):
             worker = threading.Thread(
                 target=scan_file_worker,
-                args=(filepaths, pbar),
+                args=(file_queue, pbar),
                 name=f"FileWorker-{i}"
             )
             worker.start()
