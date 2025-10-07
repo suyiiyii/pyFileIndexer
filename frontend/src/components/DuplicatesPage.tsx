@@ -67,6 +67,7 @@ const DuplicatesPage: React.FC = () => {
       dataIndex: ['meta', 'name'],
       key: 'name',
       width: 200,
+      ellipsis: true,
       render: (name) => <EllipsisWithTooltip text={name} showCopyIcon />,
     },
     {
@@ -74,6 +75,7 @@ const DuplicatesPage: React.FC = () => {
       dataIndex: ['meta', 'path'],
       key: 'path',
       width: 350,
+      ellipsis: true,
       render: (path) => <EllipsisWithTooltip text={path} showCopyIcon />,
     },
     {

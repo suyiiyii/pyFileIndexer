@@ -55,6 +55,7 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
       dataIndex: ['meta', 'name'],
       key: 'name',
       width: 200,
+      ellipsis: true,
       render: (name) => <EllipsisWithTooltip text={name} showCopyIcon />,
     },
     {
@@ -62,6 +63,7 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
       dataIndex: ['meta', 'path'],
       key: 'path',
       width: 300,
+      ellipsis: true,
       render: (path) => <EllipsisWithTooltip text={path} showCopyIcon />,
     },
     {
@@ -100,6 +102,7 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
       dataIndex: ['hash', 'md5'],
       key: 'md5',
       width: 200,
+      ellipsis: true,
       render: (md5) => md5 ? (
         <EllipsisWithTooltip text={md5} showCopyIcon>
           <code style={{ fontSize: '12px' }}>{md5}</code>

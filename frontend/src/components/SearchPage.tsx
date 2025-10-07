@@ -38,6 +38,7 @@ const SearchPage: React.FC = () => {
       dataIndex: ['meta', 'name'],
       key: 'name',
       width: 200,
+      ellipsis: true,
       render: (name) => {
         let content = name;
         if (searchType === 'name' && searchQuery) {
@@ -63,6 +64,7 @@ const SearchPage: React.FC = () => {
       dataIndex: ['meta', 'path'],
       key: 'path',
       width: 350,
+      ellipsis: true,
       render: (path) => {
         let content = path;
         if (searchType === 'path' && searchQuery) {
@@ -119,6 +121,7 @@ const SearchPage: React.FC = () => {
       dataIndex: ['hash', 'md5'],
       key: 'md5',
       width: 200,
+      ellipsis: true,
       render: (md5) => {
         if (!md5) return '-';
         let content = <code style={{ fontSize: '12px' }}>{md5}</code>;
@@ -143,6 +146,7 @@ const SearchPage: React.FC = () => {
       dataIndex: ['hash', 'sha1'],
       key: 'sha1',
       width: 200,
+      ellipsis: true,
       render: (sha1) => {
         if (!sha1) return '-';
         let content = <code style={{ fontSize: '12px' }}>{sha1}</code>;
@@ -167,6 +171,7 @@ const SearchPage: React.FC = () => {
       dataIndex: ['hash', 'sha256'],
       key: 'sha256',
       width: 200,
+      ellipsis: true,
       render: (sha256) => {
         if (!sha256) return '-';
         let content = <code style={{ fontSize: '12px' }}>{sha256}</code>;

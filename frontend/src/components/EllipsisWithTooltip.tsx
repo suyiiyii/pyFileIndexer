@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Tooltip, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 
@@ -15,6 +15,8 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
   showCopyIcon = false,
   children,
 }) => {
+  const [isHovered, setIsHovered] = useState(false);
+
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(text).then(() => {
@@ -30,21 +32,34 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
     <Tooltip title={text} placement="topLeft">
       <div
         style={{
+          width: '100%',
           maxWidth: maxWidth || '100%',
+          minWidth: 0,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           cursor: 'pointer',
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
           gap: '4px',
+          lineHeight: '1.5',
+          height: 'auto',
         }}
         onClick={handleCopy}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
           {content}
         </span>
-        {showCopyIcon && (
+        {showCopyIcon && isHovered && (
           <CopyOutlined
             style={{
               fontSize: '12px',
