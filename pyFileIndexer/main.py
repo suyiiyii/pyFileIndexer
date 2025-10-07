@@ -458,10 +458,11 @@ def scan(path: Union[str, Path]):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="pyFileIndexer")
 
-    # 创建互斥参数组：扫描模式 vs Web 模式
+    # 创建互斥参数组：扫描模式 vs Web 模式 vs 合并模式
     mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument("path", nargs="?", type=str, help="The path to scan.")
     mode_group.add_argument("--web", action="store_true", help="Start web server mode.")
+    mode_group.add_argument("--merge", action="store_true", help="Merge multiple databases.")
 
     # 通用参数
     parser.add_argument("--machine_name", type=str, help="The machine name.")
@@ -483,6 +484,14 @@ if __name__ == "__main__":
         default="0.0.0.0",
     )
 
+    # 合并模式专用参数
+    parser.add_argument(
+        "--source",
+        type=str,
+        nargs="+",
+        help="Source database files to merge (required for --merge mode).",
+    )
+
     args = parser.parse_args()
 
     # 传入的机器名称覆盖配置文件中的机器名称
@@ -499,10 +508,33 @@ if __name__ == "__main__":
         from web_server import start_web_server
 
         start_web_server(args.db_path, args.host, args.port)
+    elif args.merge:
+        # 数据库合并模式
+        if not args.source:
+            parser.error("--source is required when using --merge mode")
+
+        from db_merge import merge_databases
+
+        logger.info("开始合并数据库...")
+        logger.info(f"源数据库: {args.source}")
+        logger.info(f"目标数据库: {args.db_path}")
+
+        try:
+            stats = merge_databases(args.source, db_manager)
+            logger.info("数据库合并完成！")
+            logger.info("统计信息:")
+            logger.info(f"  处理文件总数: {stats['total_files_processed']}")
+            logger.info(f"  添加文件数: {stats['files_added']}")
+            logger.info(f"  跳过文件数: {stats['files_skipped']}")
+            logger.info(f"  新增哈希数: {stats['hashes_added']}")
+            logger.info(f"  复用哈希数: {stats['hashes_reused']}")
+        except Exception as e:
+            logger.error(f"合并失败: {e}")
+            sys.exit(1)
     else:
         # 文件扫描模式
         if not args.path:
-            parser.error("Path is required when not using --web mode")
+            parser.error("Path is required when not using --web or --merge mode")
 
         # 注册信号处理器
         signal.signal(signal.SIGINT, signal_handler)

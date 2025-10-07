@@ -19,6 +19,9 @@ uv run python pyFileIndexer/main.py <path> --machine_name <name> --db_path <db_f
 # Run web interface locally
 uv run python pyFileIndexer/main.py --web --db_path indexer.db --port 8000
 
+# Merge multiple databases
+uv run python pyFileIndexer/main.py --merge --source db1.db db2.db db3.db --db_path merged.db
+
 # Build Docker image
 docker build -t pyfileindexer .
 

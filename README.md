@@ -41,10 +41,33 @@ uv run python pyFileIndexer/main.py /path/to/scan \
 
 ### 参数说明
 
+**扫描模式：**
 - `path`: 要扫描的目录路径（必需）
 - `--machine_name`: 设备标识名称，用于区分不同存储位置
 - `--db_path`: 数据库文件保存路径（默认：indexer.db）
 - `--log_path`: 日志文件保存路径（默认：indexer.log）
+
+**合并模式：**
+```bash
+# 合并多个数据库
+uv run python pyFileIndexer/main.py --merge \
+  --source db1.db db2.db db3.db \
+  --db_path merged.db
+```
+
+- `--merge`: 启用数据库合并模式
+- `--source`: 源数据库文件列表（支持多个）
+- `--db_path`: 目标合并数据库路径
+
+**Web 模式：**
+```bash
+# 启动 Web 界面
+uv run python pyFileIndexer/main.py --web --db_path indexer.db --port 8000
+```
+
+- `--web`: 启用 Web 服务器模式
+- `--port`: Web 服务器端口（默认：8000）
+- `--host`: Web 服务器地址（默认：0.0.0.0）
 
 ## 使用场景
 
@@ -60,13 +83,20 @@ HAVING COUNT(*) > 1;
 ```
 
 ### 2. 多设备文件管理
-扫描不同设备并汇总：
+扫描不同设备并汇总到一个数据库：
 ```bash
-# 扫描 U 盘
-uv run python pyFileIndexer/main.py /Volumes/USB1 --machine_name "USB1" --db_path all_files.db
+# 在不同设备上分别扫描
+uv run python pyFileIndexer/main.py /Volumes/USB1 --machine_name "USB1" --db_path usb1.db
+uv run python pyFileIndexer/main.py /nas/data --machine_name "NAS" --db_path nas.db
+uv run python pyFileIndexer/main.py /backup --machine_name "BackupDisk" --db_path backup.db
 
-# 扫描 NAS（追加到同一数据库）
-uv run python pyFileIndexer/main.py /nas/data --machine_name "NAS" --db_path all_files.db
+# 合并所有数据库
+uv run python pyFileIndexer/main.py --merge \
+  --source usb1.db nas.db backup.db \
+  --db_path all_devices.db
+
+# 使用合并后的数据库查找跨设备的重复文件
+uv run python pyFileIndexer/main.py --web --db_path all_devices.db
 ```
 
 ### 3. 定期备份扫描
@@ -144,9 +174,10 @@ pnpm run build
 
 ## TODO
 
-- [ ] 支持多数据库合并
+- [x] 支持多数据库合并
 - [x] Web UI 界面
-- [ ] 增量更新模式
+- [x] 增量更新模式
+- [x] 压缩包文件扫描（ZIP、TAR、RAR）
 - [ ] 文件夹级别索引
 - [ ] 导出报告功能
 
