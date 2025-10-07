@@ -48,7 +48,7 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        uv sync --all-extras
+        uv sync --all-extras --all-groups
 
     - name: Install frontend dependencies and build
       run: |
