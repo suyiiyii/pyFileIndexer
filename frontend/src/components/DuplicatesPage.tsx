@@ -4,6 +4,7 @@ import { CopyOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
 import { DuplicateFileGroup, FileWithHash } from '../types/api';
+import EllipsisWithTooltip from './EllipsisWithTooltip';
 
 const { Panel } = Collapse;
 
@@ -65,15 +66,15 @@ const DuplicatesPage: React.FC = () => {
       title: '文件名',
       dataIndex: ['meta', 'name'],
       key: 'name',
-      ellipsis: true,
       width: 200,
+      render: (name) => <EllipsisWithTooltip text={name} showCopyIcon />,
     },
     {
       title: '路径',
       dataIndex: ['meta', 'path'],
       key: 'path',
-      ellipsis: true,
       width: 350,
+      render: (path) => <EllipsisWithTooltip text={path} showCopyIcon />,
     },
     {
       title: '大小',

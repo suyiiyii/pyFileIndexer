@@ -4,6 +4,7 @@ import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
 import { FileWithHash } from '../types/api';
+import EllipsisWithTooltip from './EllipsisWithTooltip';
 
 // const { Option } = Select;
 
@@ -53,15 +54,15 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
       title: '文件名',
       dataIndex: ['meta', 'name'],
       key: 'name',
-      ellipsis: true,
       width: 200,
+      render: (name) => <EllipsisWithTooltip text={name} showCopyIcon />,
     },
     {
       title: '路径',
       dataIndex: ['meta', 'path'],
       key: 'path',
-      ellipsis: true,
       width: 300,
+      render: (path) => <EllipsisWithTooltip text={path} showCopyIcon />,
     },
     {
       title: '大小',
@@ -99,8 +100,11 @@ const FileList: React.FC<FileListProps> = ({ title = "文件列表" }) => {
       dataIndex: ['hash', 'md5'],
       key: 'md5',
       width: 200,
-      ellipsis: true,
-      render: (md5) => md5 ? <code style={{ fontSize: '12px' }}>{md5}</code> : '-',
+      render: (md5) => md5 ? (
+        <EllipsisWithTooltip text={md5} showCopyIcon>
+          <code style={{ fontSize: '12px' }}>{md5}</code>
+        </EllipsisWithTooltip>
+      ) : '-',
     },
   ];
 
