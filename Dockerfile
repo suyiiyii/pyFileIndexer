@@ -32,6 +32,11 @@ RUN pnpm run build
 # ============================================================================
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS runtime
 
+# 安装 RAR 解压工具
+RUN apt-get update && \
+    apt-get install -y unar && \
+    rm -rf /var/lib/apt/lists/*
+
 # 设置工作目录
 WORKDIR /app
 

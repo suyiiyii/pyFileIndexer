@@ -120,9 +120,34 @@ The `.ignore` file controls which paths to skip:
 ## Archive Scanning
 
 ### Supported Formats
-- ZIP (.zip)
-- TAR (.tar, .tar.gz, .tgz, .tar.bz2, .tbz2, .tar.xz, .txz)
-- RAR (.rar)
+- ZIP (.zip) - No external dependencies required
+- TAR (.tar, .tar.gz, .tgz, .tar.bz2, .tbz2, .tar.xz, .txz) - No external dependencies required
+- RAR (.rar) - Requires external extraction tool (see System Dependencies below)
+
+### System Dependencies
+
+**RAR Support Requirements:**
+RAR file scanning requires one of the following extraction tools to be installed:
+- **unar** (recommended) - Open source, available on most platforms
+- **unrar** - Official RAR tool
+- **7z** - 7-Zip command line tool
+
+**Installation:**
+```bash
+# macOS (using Homebrew)
+brew install unar
+
+# Debian/Ubuntu Linux
+apt-get install unar
+
+# RHEL/CentOS/Fedora
+yum install unar
+
+# Docker
+# Already included in the Dockerfile
+```
+
+If no RAR tool is available, RAR files will be skipped with a warning message.
 
 ### Configuration
 Add these settings to `settings.toml`:

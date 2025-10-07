@@ -11,6 +11,19 @@ from models import FileMeta
 
 logger = logging.getLogger(__name__)
 
+# 检查 RAR 工具可用性
+RAR_TOOL_AVAILABLE = False
+try:
+    rarfile.tool_setup()
+    RAR_TOOL_AVAILABLE = True
+    logger.info(f"RAR support enabled using tool: {rarfile.UNRAR_TOOL}")
+except rarfile.RarCannotExec:
+    logger.warning(
+        "RAR support disabled: No extraction tool found. "
+        "Install 'unar' (recommended), 'unrar', or '7z' to enable RAR support. "
+        "macOS: brew install unar | Linux: apt-get install unar"
+    )
+
 # 支持的压缩包格式
 SUPPORTED_ARCHIVE_FORMATS = {
     ".zip": "zip",
@@ -267,6 +280,12 @@ def create_archive_scanner(
     elif archive_type == "tar":
         return TarArchiveScanner(archive_path, max_file_size)
     elif archive_type == "rar":
+        if not RAR_TOOL_AVAILABLE:
+            logger.warning(
+                f"Skipping RAR file {archive_path}: RAR extraction tool not available. "
+                "Install 'unar', 'unrar', or '7z' to enable RAR support."
+            )
+            return None
         return RarArchiveScanner(archive_path, max_file_size)
     else:
         logger.warning(f"Unsupported archive type for {archive_path}")
