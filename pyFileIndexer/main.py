@@ -332,7 +332,7 @@ def should_skip_directory(path: Path) -> bool:
     return False
 
 
-def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: "queue.Queue[Path]"):
+def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: "queue.Queue[Path]", pbar: Optional["tqdm[Any]"] = None):
     """遍历单个目录，将文件放入file_queue，子目录放入dir_queue（非递归，BFS方式）。"""
     if stop_event.is_set():
         return
@@ -354,6 +354,11 @@ def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: 
                 else:
                     logger.debug(f"发现文件: {path}")
                     file_queue.put(path)  # 将文件放入文件队列
+                    # 更新进度条总数
+                    if pbar is not None:
+                        with lock:
+                            pbar.total = (pbar.total or 0) + 1
+                            pbar.refresh()
             except Exception as e:
                 logger.error(f"Error processing path {path}: {type(e).__name__}: {e}")
     except Exception as e:
@@ -383,14 +388,22 @@ def scan(path: Union[str, Path]):
 
     logger.info(f"使用 {num_threads} 个线程并行进行目录遍历和文件处理")
 
+    # 创建全局进度条
+    pbar = tqdm(
+        total=0,
+        desc="扫描文件",
+        unit="files",
+        position=0,
+        leave=True
+    )
+
     # 启动文件处理worker线程（在后台持续工作）
     workers = []
-    file_count = threading.Event()  # 用于通知文件处理完成
 
     for i in range(num_threads):
         worker = threading.Thread(
             target=scan_file_worker,
-            args=(file_queue, None),  # 暂时不使用进度条
+            args=(file_queue, pbar),
             name=f"FileWorker-{i}"
         )
         worker.start()
@@ -409,7 +422,7 @@ def scan(path: Union[str, Path]):
             try:
                 directory = dir_queue.get(timeout=0.1)
                 # 提交目录扫描任务并记录future
-                future = dir_executor.submit(scan_directory, directory, file_queue, dir_queue)
+                future = dir_executor.submit(scan_directory, directory, file_queue, dir_queue, pbar)
                 pending_futures.add(future)
                 dir_queue.task_done()
             except queue.Empty:
@@ -433,6 +446,9 @@ def scan(path: Union[str, Path]):
     # 等待所有worker线程完成
     for worker in workers:
         worker.join()
+
+    # 关闭进度条
+    pbar.close()
 
     # 刷新剩余的批量数据
     batch_processor.flush()
