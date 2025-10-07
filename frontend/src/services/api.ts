@@ -3,7 +3,7 @@ import { PaginatedFiles, Statistics, DuplicateFiles, FileWithHash } from '../typ
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 30000,  // 增加到30秒，因为大数据量查询可能较慢
 });
 
 export const fileAPI = {
@@ -37,8 +37,14 @@ export const fileAPI = {
   },
 
   // 获取重复文件
-  getDuplicateFiles: async (): Promise<DuplicateFiles> => {
-    const response = await api.get('/duplicates');
+  getDuplicateFiles: async (params?: {
+    page?: number;
+    per_page?: number;
+    min_size?: number;
+    min_count?: number;
+    sort_by?: string;
+  }): Promise<DuplicateFiles> => {
+    const response = await api.get('/duplicates', { params });
     return response.data;
   },
 

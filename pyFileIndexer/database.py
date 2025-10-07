@@ -3,7 +3,7 @@ import logging
 from typing import Any, Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, tuple_, text, func
+from sqlalchemy import create_engine, tuple_, text, func, inspect as sa_inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
 
@@ -403,37 +403,114 @@ class DatabaseManager:
                 "duplicate_files": len(duplicate_hashes),
             }
 
-    def find_duplicate_files(self) -> list:
-        """查找重复文件"""
+    def find_duplicate_files(
+        self,
+        page: int = 1,
+        per_page: int = 20,
+        min_size: int = 1048576,  # 1MB
+        min_count: int = 2,
+        sort_by: str = "count_desc",
+    ) -> dict:
+        """查找重复文件，支持分页、过滤和排序
+
+        Args:
+            page: 页码，从1开始
+            per_page: 每页数量
+            min_size: 最小文件大小（字节）
+            min_count: 最小重复数量
+            sort_by: 排序方式 - count_desc, count_asc, size_desc, size_asc
+
+        Returns:
+            {
+                'duplicates': [{'hash': str, 'files': [(FileMeta, FileHash)]}],
+                'total_groups': int,  # 总重复组数
+                'total_files': int,   # 总重复文件数
+                'page': int,
+                'per_page': int,
+                'pages': int
+            }
+        """
         with self.session_scope() as session:
-            # 查找有多个文件的哈希值
-            duplicate_hashes = (
-                session.query(FileHash.md5)
+            # 先查找符合条件的重复哈希组（用于计算总数）
+            duplicate_hashes_query = (
+                session.query(
+                    FileHash.md5,
+                    FileHash.id,
+                    FileHash.size,
+                    func.count(FileMeta.id).label("file_count"),
+                )
                 .join(FileMeta, FileMeta.hash_id == FileHash.id)
-                .group_by(FileHash.md5)
-                .having(func.count(FileMeta.id) > 1)
-                .all()
+                .filter(FileHash.size >= min_size)
+                .group_by(FileHash.id, FileHash.md5, FileHash.size)
+                .having(func.count(FileMeta.id) >= min_count)
             )
 
+            # 根据 sort_by 参数添加排序
+            if sort_by == "count_desc":
+                duplicate_hashes_query = duplicate_hashes_query.order_by(
+                    func.count(FileMeta.id).desc(), FileHash.size.desc()
+                )
+            elif sort_by == "count_asc":
+                duplicate_hashes_query = duplicate_hashes_query.order_by(
+                    func.count(FileMeta.id).asc(), FileHash.size.asc()
+                )
+            elif sort_by == "size_desc":
+                duplicate_hashes_query = duplicate_hashes_query.order_by(
+                    FileHash.size.desc(), func.count(FileMeta.id).desc()
+                )
+            elif sort_by == "size_asc":
+                duplicate_hashes_query = duplicate_hashes_query.order_by(
+                    FileHash.size.asc(), func.count(FileMeta.id).asc()
+                )
+            else:
+                # 默认按重复数量降序
+                duplicate_hashes_query = duplicate_hashes_query.order_by(
+                    func.count(FileMeta.id).desc(), FileHash.size.desc()
+                )
+
+            # 计算总数
+            total_groups = duplicate_hashes_query.count()
+            total_pages = (total_groups + per_page - 1) // per_page
+
+            # 应用分页
+            offset = (page - 1) * per_page
+            duplicate_hashes = duplicate_hashes_query.offset(offset).limit(per_page).all()
+
             duplicates = []
-            for (md5_hash,) in duplicate_hashes:
+            total_files_count = 0
+
+            for md5_hash, hash_id, size, file_count in duplicate_hashes:
+                # 查找这个哈希对应的所有文件
                 files = (
                     session.query(FileMeta, FileHash)
                     .join(FileHash, FileMeta.hash_id == FileHash.id)
-                    .filter(FileHash.md5 == md5_hash)
+                    .filter(FileHash.id == hash_id)
                     .all()
                 )
 
-                # 分离对象
-                file_group = []
-                for file_meta, file_hash in files:
-                    session.expunge(file_meta)
-                    session.expunge(file_hash)
-                    file_group.append((file_meta, file_hash))
+                total_files_count += len(files)
+
+                # 先收集所有文件对象
+                file_group = list(files)
+
+                # 统一从 session 中分离对象，避免重复 expunge
+                # 使用 sqlalchemy.inspect 检查对象是否还在 session 中
+                for file_meta, file_hash in file_group:
+                    if sa_inspect(file_meta).session is not None:
+                        session.expunge(file_meta)
+                    if sa_inspect(file_hash).session is not None:
+                        session.expunge(file_hash)
 
                 duplicates.append({"hash": md5_hash, "files": file_group})
 
-            return duplicates
+            return {
+                "duplicates": duplicates,
+                "total_groups": total_groups,
+                "total_files": total_files_count,
+                "page": page,
+                "per_page": per_page,
+                "pages": total_pages,
+            }
 
     def get_existing_hashes_batch(self, hash_data: list[dict]) -> dict[str, int]:
         """批量查询已存在的哈希，返回哈希值到ID的映射"""

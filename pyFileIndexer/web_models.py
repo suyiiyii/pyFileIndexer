@@ -50,6 +50,11 @@ class DuplicateFileGroup(BaseModel):
 
 class DuplicateFilesResponse(BaseModel):
     duplicates: List[DuplicateFileGroup]
+    total_groups: int  # 总重复组数
+    total_files: int  # 本页的总重复文件数
+    page: int
+    per_page: int
+    pages: int  # 总页数
 
 
 class SearchFiltersRequest(BaseModel):

@@ -45,6 +45,11 @@ export interface DuplicateFileGroup {
 
 export interface DuplicateFiles {
   duplicates: DuplicateFileGroup[];
+  total_groups: number;   // 总重复组数
+  total_files: number;    // 本页的总重复文件数
+  page: number;
+  per_page: number;
+  pages: number;          // 总页数
 }
 
 export interface SearchFilters {
