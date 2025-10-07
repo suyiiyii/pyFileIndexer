@@ -46,12 +46,6 @@ COPY ./pyFileIndexer ./pyFileIndexer
 # 从前端构建阶段复制构建产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# 创建非 root 用户并设置缓存目录权限
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser && \
-    mkdir -p /home/appuser/.cache && \
-    chown -R appuser:appgroup /app /home/appuser/.cache
-USER appuser
-
 # 暴露端口
 EXPOSE 8000
 
