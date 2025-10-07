@@ -20,10 +20,10 @@ pyFileIndexer 是一个高效的文件索引和去重工具，通过计算文件
 # 扫描当前目录
 docker run --rm -v $(pwd):$(pwd) \
   ghcr.io/suyiiyii/pyfileindexer:latest \
-  $(pwd) \
-  --machine_name "MyDevice" \
-  --db_path $(pwd)/indexer.db \
-  --log_path $(pwd)/indexer.log
+  scan $(pwd) \
+  --machine-name "MyDevice" \
+  --db-path $(pwd)/indexer.db \
+  --log-path $(pwd)/indexer.log
 ```
 
 ### 本地运行
@@ -33,18 +33,56 @@ docker run --rm -v $(pwd):$(pwd) \
 uv sync
 
 # 扫描指定目录
-uv run python pyFileIndexer/main.py /path/to/scan \
-  --machine_name "MyLaptop" \
-  --db_path ./files.db \
-  --log_path ./scan.log
+uv run python pyFileIndexer/main.py scan /path/to/scan \
+  --machine-name "MyLaptop" \
+  --db-path ./files.db \
+  --log-path ./scan.log
 ```
 
-### 参数说明
+### 命令说明
 
+pyFileIndexer 使用子命令方式运行，支持三种模式：
+
+#### 1. 扫描模式 (scan)
+
+扫描指定目录，建立文件索引：
+
+```bash
+uv run python pyFileIndexer/main.py scan <path> [选项]
+```
+
+**参数：**
 - `path`: 要扫描的目录路径（必需）
-- `--machine_name`: 设备标识名称，用于区分不同存储位置
-- `--db_path`: 数据库文件保存路径（默认：indexer.db）
-- `--log_path`: 日志文件保存路径（默认：indexer.log）
+- `--machine-name`: 设备标识名称，用于区分不同存储位置
+- `--db-path`: 数据库文件保存路径（默认：indexer.db）
+- `--log-path`: 日志文件保存路径（默认：indexer.log）
+
+#### 2. Web 服务模式 (serve)
+
+启动 Web 界面，浏览和搜索已索引的文件：
+
+```bash
+uv run python pyFileIndexer/main.py serve [选项]
+```
+
+**参数：**
+- `--db-path`: 数据库文件路径（默认：indexer.db）
+- `--port`: Web 服务器端口（默认：8000）
+- `--host`: Web 服务器地址（默认：0.0.0.0）
+- `--log-path`: 日志文件保存路径（默认：indexer.log）
+
+#### 3. 合并模式 (merge)
+
+合并多个数据库文件：
+
+```bash
+uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output merged.db
+```
+
+**参数：**
+- `--source`: 源数据库文件列表（必需，支持多个）
+- `--output`: 输出合并后的数据库路径（默认：merged.db）
+- `--log-path`: 日志文件保存路径（默认：indexer.log）
 
 ## 使用场景
 
@@ -60,20 +98,27 @@ HAVING COUNT(*) > 1;
 ```
 
 ### 2. 多设备文件管理
-扫描不同设备并汇总：
+扫描不同设备并汇总到一个数据库：
 ```bash
-# 扫描 U 盘
-uv run python pyFileIndexer/main.py /Volumes/USB1 --machine_name "USB1" --db_path all_files.db
+# 在不同设备上分别扫描
+uv run python pyFileIndexer/main.py scan /Volumes/USB1 --machine-name "USB1" --db-path usb1.db
+uv run python pyFileIndexer/main.py scan /nas/data --machine-name "NAS" --db-path nas.db
+uv run python pyFileIndexer/main.py scan /backup --machine-name "BackupDisk" --db-path backup.db
 
-# 扫描 NAS（追加到同一数据库）
-uv run python pyFileIndexer/main.py /nas/data --machine_name "NAS" --db_path all_files.db
+# 合并所有数据库
+uv run python pyFileIndexer/main.py merge \
+  --source usb1.db nas.db backup.db \
+  --output all_devices.db
+
+# 使用合并后的数据库查找跨设备的重复文件
+uv run python pyFileIndexer/main.py serve --db-path all_devices.db
 ```
 
 ### 3. 定期备份扫描
 创建定时任务，定期更新文件索引：
 ```bash
 # crontab -e
-0 2 * * 0 docker run -v /backup:/backup pyfileindexer /backup --machine_name "BackupDisk" --db_path /backup/index.db
+0 2 * * 0 docker run -v /backup:/backup pyfileindexer scan /backup --machine-name "BackupDisk" --db-path /backup/index.db
 ```
 
 ## 数据库结构
@@ -126,10 +171,10 @@ __pycache__
 
 ```bash
 # 确保已扫描文件并生成数据库
-uv run python pyFileIndexer/main.py /path/to/scan --db_path files.db
+uv run python pyFileIndexer/main.py scan /path/to/scan --db-path files.db
 
 # 启动 Web 服务器
-uv run python pyFileIndexer/main.py --web --db_path files.db --port 8000
+uv run python pyFileIndexer/main.py serve --db-path files.db --port 8000
 ```
 
 ### 前端构建
@@ -144,9 +189,10 @@ pnpm run build
 
 ## TODO
 
-- [ ] 支持多数据库合并
+- [x] 支持多数据库合并
 - [x] Web UI 界面
-- [ ] 增量更新模式
+- [x] 增量更新模式
+- [x] 压缩包文件扫描（ZIP、TAR、RAR）
 - [ ] 文件夹级别索引
 - [ ] 导出报告功能
 
