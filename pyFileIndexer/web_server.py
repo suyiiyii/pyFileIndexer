@@ -15,7 +15,6 @@ from web_models import (
     PaginatedFilesResponse,
     StatisticsResponse,
     DuplicateFilesResponse,
-    SearchFiltersRequest,
     FileWithHashResponse,
     FileMetaResponse,
     FileHashResponse,
@@ -189,24 +188,65 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/api/duplicates", response_model=DuplicateFilesResponse)
-    async def get_duplicate_files():
-        """获取重复文件"""
+    async def get_duplicate_files(
+        page: int = Query(1, ge=1, description="页码"),
+        per_page: int = Query(20, ge=1, le=100, description="每页数量"),
+        min_size: int = Query(1048576, ge=0, description="最小文件大小（字节），默认1MB"),
+        min_count: int = Query(2, ge=2, description="最小重复数量"),
+        sort_by: str = Query(
+            "count_desc",
+            regex="^(count_desc|count_asc|size_desc|size_asc)$",
+            description="排序方式: count_desc, count_asc, size_desc, size_asc",
+        ),
+    ):
+        """获取重复文件，支持分页、过滤和排序"""
         try:
-            duplicates_data = db_manager.find_duplicate_files()
+            logger.info(
+                f"Getting duplicate files: page={page}, per_page={per_page}, "
+                f"min_size={min_size}, min_count={min_count}, sort_by={sort_by}"
+            )
+            result = db_manager.find_duplicate_files(
+                page=page,
+                per_page=per_page,
+                min_size=min_size,
+                min_count=min_count,
+                sort_by=sort_by,
+            )
+            logger.info(
+                f"Found {result['total_groups']} total groups, "
+                f"returning {len(result['duplicates'])} groups for page {page}"
+            )
 
             duplicates = []
-            for dup_group in duplicates_data:
-                files = [
-                    convert_db_record_to_response(file_meta, file_hash)
-                    for file_meta, file_hash in dup_group["files"]
-                ]
-                duplicates.append(
-                    DuplicateFileGroup(hash=dup_group["hash"], files=files)
-                )
+            for dup_group in result["duplicates"]:
+                try:
+                    files = [
+                        convert_db_record_to_response(file_meta, file_hash)
+                        for file_meta, file_hash in dup_group["files"]
+                    ]
+                    duplicates.append(
+                        DuplicateFileGroup(hash=dup_group["hash"], files=files)
+                    )
+                except Exception as group_error:
+                    logger.error(
+                        f"Error processing duplicate group: {group_error}",
+                        exc_info=True,
+                    )
+                    continue
 
-            return DuplicateFilesResponse(duplicates=duplicates)
+            return DuplicateFilesResponse(
+                duplicates=duplicates,
+                total_groups=result["total_groups"],
+                total_files=result["total_files"],
+                page=result["page"],
+                per_page=result["per_page"],
+                pages=result["pages"],
+            )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Error in get_duplicate_files endpoint: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500, detail=f"Internal server error: {str(e)}"
+            )
 
     @app.get("/health")
     async def health_check():
@@ -274,7 +314,7 @@ def start_web_server(db_path: str, host: str, port: int):
     try:
         app = create_app()
 
-        logger.info(f"启动 Web 服务器...")
+        logger.info("启动 Web 服务器...")
         logger.info(f"数据库路径: {db_path}")
         logger.info(f"服务地址: http://{host}:{port}")
         logger.info("按 Ctrl+C 停止服务器")
