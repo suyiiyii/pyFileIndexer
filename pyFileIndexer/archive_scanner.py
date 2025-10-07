@@ -121,10 +121,50 @@ class ArchiveScanner:
 class ZipArchiveScanner(ArchiveScanner):
     """ZIP文件扫描器"""
 
+    def _decode_filename(self, zip_info: zipfile.ZipInfo) -> str:
+        """
+        正确解码 ZIP 文件名，处理中文编码问题
+
+        Args:
+            zip_info: ZipInfo 对象
+
+        Returns:
+            正确解码的文件名
+        """
+        # 检查 UTF-8 标志位（bit 11）
+        if zip_info.flag_bits & 0x800:
+            # 文件名已经是 UTF-8 编码
+            return zip_info.filename
+
+        # 没有 UTF-8 标志，可能是 GBK 等其他编码
+        # 先获取原始字节（通过 cp437 重新编码）
+        try:
+            raw_bytes = zip_info.filename.encode('cp437')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            # 如果 cp437 编码失败，返回原文件名
+            return zip_info.filename
+
+        # 尝试多种编码解码
+        encodings = ['gbk', 'gb18030', 'utf-8', 'big5']
+        for encoding in encodings:
+            try:
+                decoded = raw_bytes.decode(encoding)
+                # 成功解码，返回结果
+                return decoded
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        # 所有编码都失败，返回原文件名
+        logger.warning(f"Cannot decode filename: {zip_info.filename!r}")
+        return zip_info.filename
+
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
         try:
             with zipfile.ZipFile(self.archive_path, "r") as zip_file:
                 for info in zip_file.filelist:
+                    # 解码文件名
+                    decoded_filename = self._decode_filename(info)
+
                     # 跳过目录
                     if info.is_dir():
                         continue
@@ -132,7 +172,7 @@ class ZipArchiveScanner(ArchiveScanner):
                     # 跳过过大的文件
                     if info.file_size > self.max_file_size:
                         logger.warning(
-                            f"Skipping large file in ZIP: {info.filename} ({info.file_size} bytes)"
+                            f"Skipping large file in ZIP: {decoded_filename} ({info.file_size} bytes)"
                         )
                         continue
 
@@ -150,7 +190,7 @@ class ZipArchiveScanner(ArchiveScanner):
                             return lambda: file_data
 
                         entry = ArchiveEntry(
-                            name=info.filename,
+                            name=decoded_filename,
                             size=info.file_size,
                             modified=modified,
                             data_reader=make_reader(data),
@@ -158,7 +198,7 @@ class ZipArchiveScanner(ArchiveScanner):
                         yield entry
                     except Exception as e:
                         logger.error(
-                            f"Error reading file {info.filename} from ZIP: {e}"
+                            f"Error reading file {decoded_filename} from ZIP: {e}"
                         )
                         continue
         except Exception as e:
