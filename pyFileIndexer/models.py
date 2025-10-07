@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from dataclasses import dataclass
-from database import Base
+
+from base import Base
 
 
 @dataclass

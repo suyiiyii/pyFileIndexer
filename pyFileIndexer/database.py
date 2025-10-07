@@ -1,15 +1,14 @@
 import threading
-from typing import TYPE_CHECKING, Any, Optional
+import logging
+from typing import Any, Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, tuple_
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, tuple_, text, func
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
 
-if TYPE_CHECKING:
-    from models import FileHash, FileMeta
-
-Base = declarative_base()
+from base import Base
+from models import FileHash, FileMeta
 
 
 class DatabaseManager:
@@ -36,7 +35,7 @@ class DatabaseManager:
             if hasattr(self, "_initialized") and self._initialized:
                 return
 
-            self.engine = None
+            self.engine: Optional[Engine] = None
             self.Session = None
             self.session_lock = threading.Lock()
             self._initialized = True
@@ -65,13 +64,14 @@ class DatabaseManager:
 
     def _migrate_schema(self):
         """自动迁移数据库 schema，添加缺失的列"""
+        if self.engine is None:
+            return
+
         # 只处理 SQLite 数据库
         if not str(self.engine.url).startswith("sqlite"):
             return
 
         try:
-            from sqlalchemy import text
-
             with self.engine.begin() as conn:
                 # 检查 file_meta 表结构
                 result = conn.execute(text("PRAGMA table_info(file_meta)")).fetchall()
@@ -103,8 +103,6 @@ class DatabaseManager:
 
         except Exception as e:
             # 忽略迁移错误，避免影响正常初始化
-            import logging
-
             logger = logging.getLogger(__name__)
             logger.warning(f"Schema migration warning: {e}")
 
@@ -130,10 +128,8 @@ class DatabaseManager:
             raise RuntimeError("Database is not initialized.")
         return self.Session()
 
-    def get_file_by_name(self, name: str) -> Optional["FileMeta"]:
+    def get_file_by_name(self, name: str) -> Optional[FileMeta]:
         """根据文件名查询文件信息。"""
-        from models import FileMeta
-
         session = self.session_factory()
         try:
             result = session.query(FileMeta).filter_by(name=name).first()
@@ -144,10 +140,8 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_file_by_path(self, path: str) -> Optional["FileMeta"]:
+    def get_file_by_path(self, path: str) -> Optional[FileMeta]:
         """根据文件路径查询文件信息。"""
-        from models import FileMeta
-
         session = self.session_factory()
         try:
             result = session.query(FileMeta).filter_by(path=path).first()
@@ -160,10 +154,8 @@ class DatabaseManager:
 
     def get_file_with_hash_by_path(
         self, path: str
-    ) -> Optional[tuple["FileMeta", Optional["FileHash"]]]:
+    ) -> Optional[tuple[FileMeta, Optional[FileHash]]]:
         """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
-        from models import FileMeta, FileHash
-
         session = self.session_factory()
         try:
             result = (
@@ -184,10 +176,8 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_hash_by_id(self, hash_id: int) -> Optional["FileHash"]:
+    def get_hash_by_id(self, hash_id: int) -> Optional[FileHash]:
         """根据哈希 ID 查询哈希信息。"""
-        from models import FileHash
-
         session = self.session_factory()
         try:
             result = session.query(FileHash).filter_by(id=hash_id).first()
@@ -198,10 +188,8 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def get_hash_by_hash(self, hash: dict[str, str]) -> Optional["FileHash"]:
+    def get_hash_by_hash(self, hash: dict[str, str]) -> Optional[FileHash]:
         """根据哈希查询哈希信息。"""
-        from models import FileHash
-
         session = self.session_factory()
         try:
             result = session.query(FileHash).filter_by(**hash).first()
@@ -212,7 +200,7 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def add_file(self, file: "FileMeta") -> Any:
+    def add_file(self, file: FileMeta) -> Any:
         """添加文件信息。"""
         with self.session_scope() as session:
             session.add(file)
@@ -220,7 +208,7 @@ class DatabaseManager:
             file_id = file.id
             return file_id
 
-    def add_hash(self, hash: "FileHash") -> Any:
+    def add_hash(self, hash: FileHash) -> Any:
         """添加哈希信息。"""
         with self.session_scope() as session:
             session.add(hash)
@@ -228,7 +216,7 @@ class DatabaseManager:
             hash_id = hash.id
             return hash_id
 
-    def add(self, file: "FileMeta", hash: Optional["FileHash"] = None):
+    def add(self, file: FileMeta, hash: Optional[FileHash] = None):
         """添加文件信息和哈希信息。"""
         with self.session_scope() as session:
             if hash is not None:
@@ -243,23 +231,21 @@ class DatabaseManager:
                     file.hash_id = hash.id  # type: ignore
             session.add(file)
 
-    def update_file(self, file: "FileMeta", hash: Optional["FileHash"] = None):
+    def update_file(self, file: FileMeta, hash: Optional[FileHash] = None):
         """更新现有文件信息。"""
-        from models import FileMeta
-
         with self.session_scope() as session:
             # 查找现有的文件记录
             existing_file = session.query(FileMeta).filter_by(path=file.path).first()
             if existing_file:
                 # 更新现有记录的字段
-                existing_file.name = file.name
-                existing_file.created = file.created
-                existing_file.modified = file.modified
-                existing_file.scanned = file.scanned
-                existing_file.operation = file.operation
-                existing_file.machine = file.machine
-                existing_file.is_archived = getattr(file, "is_archived", 0)
-                existing_file.archive_path = getattr(file, "archive_path", None)
+                existing_file.name = file.name  # type: ignore
+                existing_file.created = file.created  # type: ignore
+                existing_file.modified = file.modified  # type: ignore
+                existing_file.scanned = file.scanned  # type: ignore
+                existing_file.operation = file.operation  # type: ignore
+                existing_file.machine = file.machine  # type: ignore
+                existing_file.is_archived = getattr(file, "is_archived", 0)  # type: ignore
+                existing_file.archive_path = getattr(file, "archive_path", None)  # type: ignore
 
                 if hash is not None:
                     # 如果哈希信息已经存在，则直接使用已有的哈希信息
@@ -284,9 +270,6 @@ class DatabaseManager:
         self, page: int = 1, per_page: int = 20, filters: Optional[dict] = None
     ) -> dict:
         """分页查询文件列表"""
-        from models import FileMeta, FileHash
-        import logging
-
         logger = logging.getLogger(__name__)
 
         try:
@@ -359,8 +342,6 @@ class DatabaseManager:
 
     def search_files(self, query: str, search_type: str = "name") -> list:
         """搜索文件"""
-        from models import FileMeta, FileHash
-
         with self.session_scope() as session:
             db_query = session.query(FileMeta, FileHash).outerjoin(
                 FileHash, FileMeta.hash_id == FileHash.id
@@ -392,9 +373,6 @@ class DatabaseManager:
 
     def get_statistics(self) -> dict:
         """获取统计信息"""
-        from models import FileMeta, FileHash
-        from sqlalchemy import func
-
         with self.session_scope() as session:
             # 总文件数
             total_files = session.query(FileMeta).count()
@@ -427,9 +405,6 @@ class DatabaseManager:
 
     def find_duplicate_files(self) -> list:
         """查找重复文件"""
-        from models import FileMeta, FileHash
-        from sqlalchemy import func
-
         with self.session_scope() as session:
             # 查找有多个文件的哈希值
             duplicate_hashes = (
@@ -462,8 +437,6 @@ class DatabaseManager:
 
     def get_existing_hashes_batch(self, hash_data: list[dict]) -> dict[str, int]:
         """批量查询已存在的哈希，返回哈希值到ID的映射"""
-        from models import FileHash
-
         if not hash_data:
             return {}
 
@@ -483,12 +456,12 @@ class DatabaseManager:
             )
 
             # 创建映射：(md5, sha1, sha256) -> hash_id
-            hash_mapping = {}
+            hash_mapping: dict[tuple[str, str, str], int] = {}
             for hash_obj in existing_hashes:
-                key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)
-                hash_mapping[key] = hash_obj.id
+                key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)  # type: ignore
+                hash_mapping[key] = hash_obj.id  # type: ignore
 
-            return hash_mapping
+            return hash_mapping  # type: ignore
 
     def add_files_batch(self, files_data: list[dict]):
         """批量添加文件和哈希信息
@@ -497,8 +470,6 @@ class DatabaseManager:
         - file_hash: FileHash object
         - operation: 'ADD' or 'MOD'
         """
-        from models import FileMeta, FileHash
-
         if not files_data:
             return
 
@@ -541,7 +512,7 @@ class DatabaseManager:
 
             # 4. 批量插入新哈希
             if hash_to_insert:
-                session.bulk_insert_mappings(FileHash, hash_to_insert)
+                session.bulk_insert_mappings(FileHash, hash_to_insert)  # type: ignore
                 session.flush()  # 获取插入的ID
 
                 # 重新查询获取新插入哈希的ID
@@ -557,8 +528,8 @@ class DatabaseManager:
                 )
 
                 for hash_obj in new_hashes:
-                    key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)
-                    existing_hashes[key] = hash_obj.id
+                    key = (hash_obj.md5, hash_obj.sha1, hash_obj.sha256)  # type: ignore
+                    existing_hashes[key] = hash_obj.id  # type: ignore
 
             # 5. 准备文件数据并设置hash_id
             files_to_insert = []
@@ -592,17 +563,17 @@ class DatabaseManager:
                     session.query(FileMeta).filter_by(path=file_meta.path).first()
                 )
                 if existing_file:
-                    existing_file.name = file_meta.name
-                    existing_file.created = file_meta.created
-                    existing_file.modified = file_meta.modified
-                    existing_file.scanned = file_meta.scanned
-                    existing_file.operation = file_meta.operation
-                    existing_file.machine = file_meta.machine
-                    existing_file.hash_id = hash_id
-                    existing_file.is_archived = getattr(file_meta, "is_archived", 0)
+                    existing_file.name = file_meta.name  # type: ignore
+                    existing_file.created = file_meta.created  # type: ignore
+                    existing_file.modified = file_meta.modified  # type: ignore
+                    existing_file.scanned = file_meta.scanned  # type: ignore
+                    existing_file.operation = file_meta.operation  # type: ignore
+                    existing_file.machine = file_meta.machine  # type: ignore
+                    existing_file.hash_id = hash_id  # type: ignore
+                    existing_file.is_archived = getattr(file_meta, "is_archived", 0)  # type: ignore
                     existing_file.archive_path = getattr(
                         file_meta, "archive_path", None
-                    )
+                    )  # type: ignore
                 else:
                     # 如果文件不存在，添加为新文件
                     file_dict = {
@@ -621,7 +592,7 @@ class DatabaseManager:
 
             # 6. 批量插入新文件
             if files_to_insert:
-                session.bulk_insert_mappings(FileMeta, files_to_insert)
+                session.bulk_insert_mappings(FileMeta, files_to_insert)  # type: ignore
 
 
 # 创建全局单例实例
