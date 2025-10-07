@@ -13,25 +13,25 @@ pyFileIndexer is a file indexing system that scans directories and creates a SQL
 # Install dependencies (uses uv package manager)
 uv sync
 
-# Run the indexer
-uv run python pyFileIndexer/main.py <path> --machine_name <name> --db_path <db_file> --log_path <log_file>
+# Scan directory and index files
+uv run python pyFileIndexer/main.py scan <path> --machine-name <name> --db-path <db_file> --log-path <log_file>
 
 # Run web interface locally
-uv run python pyFileIndexer/main.py --web --db_path indexer.db --port 8000
+uv run python pyFileIndexer/main.py serve --db-path indexer.db --port 8000 --host 0.0.0.0
 
 # Merge multiple databases
-uv run python pyFileIndexer/main.py --merge --source db1.db db2.db db3.db --db_path merged.db
+uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output merged.db
 
 # Build Docker image
 docker build -t pyfileindexer .
 
 # Run indexer via Docker (scanning files)
-docker run --rm -v $(pwd):$(pwd) pyfileindexer $(pwd) --db_path $(pwd)/indexer.db --log_path $(pwd)/indexer.log
+docker run --rm -v $(pwd):$(pwd) pyfileindexer scan $(pwd) --db-path $(pwd)/indexer.db --log-path $(pwd)/indexer.log
 
 # Run web interface via Docker
-docker run --rm -p 8000:8000 --tmpfs /data pyfileindexer --web --db_path /data/indexer.db --port 8000
+docker run --rm -p 8000:8000 --tmpfs /data pyfileindexer serve --db-path /data/indexer.db --port 8000
 # Or with persistent data:
-docker run --rm -p 8000:8000 -v $(pwd)/data:/data pyfileindexer --web --db_path /data/indexer.db --port 8000
+docker run --rm -p 8000:8000 -v $(pwd)/data:/data pyfileindexer serve --db-path /data/indexer.db --port 8000
 ```
 
 ### Testing

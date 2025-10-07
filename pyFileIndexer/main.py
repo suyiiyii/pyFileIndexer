@@ -456,63 +456,123 @@ def scan(path: Union[str, Path]):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="pyFileIndexer")
-
-    # 创建互斥参数组：扫描模式 vs Web 模式 vs 合并模式
-    mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument("path", nargs="?", type=str, help="The path to scan.")
-    mode_group.add_argument("--web", action="store_true", help="Start web server mode.")
-    mode_group.add_argument("--merge", action="store_true", help="Merge multiple databases.")
-
-    # 通用参数
-    parser.add_argument("--machine_name", type=str, help="The machine name.")
-    parser.add_argument(
-        "--db_path", type=str, help="The database path.", default="indexer.db"
+    parser = argparse.ArgumentParser(
+        description="pyFileIndexer - A file indexing system for tracking files across storage locations"
     )
-    parser.add_argument(
-        "--log_path", type=str, help="The log path.", default="indexer.log"
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers.required = True
+
+    # Scan 子命令
+    scan_parser = subparsers.add_parser("scan", help="Scan directory and index files")
+    scan_parser.add_argument("path", type=str, help="The directory path to scan")
+    scan_parser.add_argument(
+        "--machine-name", type=str, dest="machine_name", help="The machine name"
+    )
+    scan_parser.add_argument(
+        "--db-path",
+        type=str,
+        dest="db_path",
+        help="The database path (default: indexer.db)",
+        default="indexer.db",
+    )
+    scan_parser.add_argument(
+        "--log-path",
+        type=str,
+        dest="log_path",
+        help="The log path (default: indexer.log)",
+        default="indexer.log",
     )
 
-    # Web 模式专用参数
-    parser.add_argument(
-        "--port", type=int, help="Web server port (default: 8000).", default=8000
+    # Serve 子命令
+    serve_parser = subparsers.add_parser("serve", help="Start web server")
+    serve_parser.add_argument(
+        "--db-path",
+        type=str,
+        dest="db_path",
+        help="The database path (default: indexer.db)",
+        default="indexer.db",
     )
-    parser.add_argument(
+    serve_parser.add_argument(
+        "--log-path",
+        type=str,
+        dest="log_path",
+        help="The log path (default: indexer.log)",
+        default="indexer.log",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        help="Web server port (default: 8000)",
+        default=8000,
+    )
+    serve_parser.add_argument(
         "--host",
         type=str,
-        help="Web server host (default: 0.0.0.0).",
+        help="Web server host (default: 0.0.0.0)",
         default="0.0.0.0",
     )
 
-    # 合并模式专用参数
-    parser.add_argument(
+    # Merge 子命令
+    merge_parser = subparsers.add_parser("merge", help="Merge multiple databases")
+    merge_parser.add_argument(
         "--source",
         type=str,
         nargs="+",
-        help="Source database files to merge (required for --merge mode).",
+        required=True,
+        help="Source database files to merge",
+    )
+    merge_parser.add_argument(
+        "--output",
+        type=str,
+        dest="db_path",
+        help="Output database path (default: merged.db)",
+        default="merged.db",
+    )
+    merge_parser.add_argument(
+        "--log-path",
+        type=str,
+        dest="log_path",
+        help="The log path (default: indexer.log)",
+        default="indexer.log",
     )
 
     args = parser.parse_args()
-
-    # 传入的机器名称覆盖配置文件中的机器名称
-    if args.machine_name:
-        setattr(settings, "MACHINE_NAME", args.machine_name)
-        cached_config.update_machine_name(args.machine_name)
 
     # 初始化数据库和日志
     db_manager.init("sqlite:///" + str(args.db_path))
     init_file_logger(args.log_path)
 
-    if args.web:
+    if args.command == "scan":
+        # 传入的机器名称覆盖配置文件中的机器名称
+        if args.machine_name:
+            setattr(settings, "MACHINE_NAME", args.machine_name)
+            cached_config.update_machine_name(args.machine_name)
+
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, signal_handler)
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, signal_handler)
+
+        try:
+            scan(args.path)
+        except KeyboardInterrupt:
+            # 第一次 Ctrl+C 由 signal_handler 处理
+            # 这里捕获是为了避免堆栈输出
+            logger.warning("扫描已中断")
+        finally:
+            if stop_event.is_set():
+                logger.info("扫描已被用户中断。")
+            else:
+                logger.info("扫描完成。")
+
+    elif args.command == "serve":
         # Web 服务器模式
         from web_server import start_web_server
 
         start_web_server(args.db_path, args.host, args.port)
-    elif args.merge:
-        # 数据库合并模式
-        if not args.source:
-            parser.error("--source is required when using --merge mode")
 
+    elif args.command == "merge":
+        # 数据库合并模式
         from db_merge import merge_databases
 
         logger.info("开始合并数据库...")
@@ -531,24 +591,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"合并失败: {e}")
             sys.exit(1)
-    else:
-        # 文件扫描模式
-        if not args.path:
-            parser.error("Path is required when not using --web or --merge mode")
-
-        # 注册信号处理器
-        signal.signal(signal.SIGINT, signal_handler)
-        if hasattr(signal, 'SIGTERM'):
-            signal.signal(signal.SIGTERM, signal_handler)
-
-        try:
-            scan(args.path)
-        except KeyboardInterrupt:
-            # 第一次 Ctrl+C 由 signal_handler 处理
-            # 这里捕获是为了避免堆栈输出
-            logger.warning("扫描已中断")
-        finally:
-            if stop_event.is_set():
-                logger.info("扫描已被用户中断。")
-            else:
-                logger.info("扫描完成。")
