@@ -219,15 +219,22 @@ class TestWebAPI:
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
         """测试获取重复文件"""
-        mock_db_manager.find_duplicate_files.return_value = [
-            {
-                "hash": "d41d8cd98f00b204e9800998ecf8427e",
-                "files": [
-                    (mock_file_meta, mock_file_hash),
-                    (mock_file_meta, mock_file_hash),
-                ],
-            }
-        ]
+        mock_db_manager.find_duplicate_files.return_value = {
+            "duplicates": [
+                {
+                    "hash": "d41d8cd98f00b204e9800998ecf8427e",
+                    "files": [
+                        (mock_file_meta, mock_file_hash),
+                        (mock_file_meta, mock_file_hash),
+                    ],
+                }
+            ],
+            "total_groups": 1,
+            "total_files": 2,
+            "page": 1,
+            "per_page": 20,
+            "pages": 1,
+        }
 
         response = client.get("/api/duplicates")
         assert response.status_code == 200
