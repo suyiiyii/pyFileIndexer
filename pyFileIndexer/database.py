@@ -60,6 +60,54 @@ class DatabaseManager:
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
 
+        # 自动迁移 schema
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """自动迁移数据库 schema，添加缺失的列"""
+        # 只处理 SQLite 数据库
+        if not str(self.engine.url).startswith("sqlite"):
+            return
+
+        try:
+            from sqlalchemy import text
+
+            with self.engine.begin() as conn:
+                # 检查 file_meta 表结构
+                result = conn.execute(text("PRAGMA table_info(file_meta)")).fetchall()
+                existing_columns = {row[1] for row in result}
+
+                # 检查并添加 is_archived 列
+                if "is_archived" not in existing_columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE file_meta ADD COLUMN is_archived INTEGER DEFAULT 0"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX ix_file_meta_is_archived ON file_meta (is_archived)"
+                        )
+                    )
+
+                # 检查并添加 archive_path 列
+                if "archive_path" not in existing_columns:
+                    conn.execute(
+                        text("ALTER TABLE file_meta ADD COLUMN archive_path VARCHAR")
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX ix_file_meta_archive_path ON file_meta (archive_path)"
+                        )
+                    )
+
+        except Exception as e:
+            # 忽略迁移错误，避免影响正常初始化
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Schema migration warning: {e}")
+
     @contextmanager
     def session_scope(self):
         """提供事务作用域的会话管理。"""
