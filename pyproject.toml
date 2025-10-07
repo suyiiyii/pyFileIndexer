@@ -17,7 +17,7 @@ dependencies = [
 ]
 requires-python = ">=3.11"
 
-[project.optional-dependencies]
+[dependency-groups]
 test = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
@@ -27,6 +27,12 @@ test = [
     "freezegun>=1.4.0",
     "httpx>=0.25.0",
 ]
+
+dev = [
+    "httpx>=0.28.1",
+    "pyyaml>=6.0.2",
+]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -45,9 +51,6 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
-
-[dependency-groups]
-dev = ["pyyaml>=6.0.2"]
 
 
 [tool.pyright]
