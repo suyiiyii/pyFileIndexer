@@ -31,6 +31,36 @@ docker run --rm -p 8000:8000 --tmpfs /data pyfileindexer --web --db_path /data/i
 docker run --rm -p 8000:8000 -v $(pwd)/data:/data pyfileindexer --web --db_path /data/indexer.db --port 8000
 ```
 
+### Testing
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/test_database.py
+
+# Run with coverage
+uv run pytest --cov=pyFileIndexer --cov-report=html
+
+# Run parallel tests
+uv run pytest -n auto
+
+# Run only unit tests
+uv run pytest -m unit
+
+# Run only integration tests
+uv run pytest -m integration
+```
+
+### Frontend Development
+```bash
+cd frontend
+pnpm install
+pnpm run dev      # Development server
+pnpm run build    # Production build
+pnpm run preview  # Preview production build
+```
+
 ## Architecture
 
 ### Core Components
@@ -53,6 +83,14 @@ docker run --rm -p 8000:8000 -v $(pwd)/data:/data pyfileindexer --web --db_path 
 4. **config.py**: Configuration management using Dynaconf
    - Loads from `settings.toml` and `.secrets.toml`
    - Environment variables with `DYNACONF_` prefix
+
+5. **web_server.py**: FastAPI-based web interface
+   - Provides REST API for file searching, statistics, and duplicate detection
+   - Serves static React frontend from `frontend/dist`
+
+6. **archive_scanner.py**: Archive file scanning
+   - Supports ZIP, TAR, RAR formats
+   - Creates virtual paths for archived files (`archive_path::internal_file_path`)
 
 ### Scanning Workflow
 
