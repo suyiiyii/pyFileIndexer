@@ -22,6 +22,8 @@ const FileTreePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<TreeFileInfo | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
 
   const formatFileSize = (bytes: number): string => {
     if (!bytes) return '0 B';
@@ -41,7 +43,22 @@ const FileTreePage: React.FC = () => {
     return new Date(dateString).toLocaleString('zh-CN');
   };
 
-  // 加载树数据
+  // 获取路径的所有父节点路径
+  const getPathSegments = (path: string): string[] => {
+    if (!path || path === '/') return [];
+
+    const segments: string[] = [];
+    const parts = path.split('/').filter(p => p); // 移除空字符串
+
+    for (let i = 0; i < parts.length; i++) {
+      const segment = '/' + parts.slice(0, i + 1).join('/');
+      segments.push(segment);
+    }
+
+    return segments;
+  };
+
+  // 加载树数据并同步树的展开状态
   const loadTreeData = async (path: string = '') => {
     setLoading(true);
     try {
@@ -49,6 +66,15 @@ const FileTreePage: React.FC = () => {
       setCurrentPath(data.current_path);
       setFiles(data.files);
       setDirectories(data.directories);
+
+      // 同步树的展开和选中状态
+      if (path && path !== '/') {
+        const pathSegments = getPathSegments(path);
+        setExpandedKeys(pathSegments);
+        setSelectedKeys([path]);
+      } else {
+        setSelectedKeys([]);
+      }
     } catch (error) {
       message.error('加载目录数据失败');
       console.error('Error loading tree data:', error);
@@ -195,6 +221,9 @@ const FileTreePage: React.FC = () => {
             treeData={treeData}
             onSelect={onSelect}
             switcherIcon={<FolderOpenOutlined />}
+            expandedKeys={expandedKeys}
+            selectedKeys={selectedKeys}
+            onExpand={(keys) => setExpandedKeys(keys)}
           />
         </div>
       </Sider>

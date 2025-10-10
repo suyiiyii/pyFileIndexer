@@ -757,9 +757,10 @@ class DatabaseManager:
                         directories.add(dir_name)
                 else:
                     # 是当前目录的文件
-                    if file_meta:
+                    # 使用 inspect 检查对象是否在 session 中,避免重复 expunge
+                    if file_meta and sa_inspect(file_meta).session is not None:
                         session.expunge(file_meta)
-                    if file_hash:
+                    if file_hash and sa_inspect(file_hash).session is not None:
                         session.expunge(file_hash)
                     current_files.append((file_meta, file_hash))
 
