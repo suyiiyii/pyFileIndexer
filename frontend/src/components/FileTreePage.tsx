@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Tree, Table, Card, Tag, message, Drawer, Descriptions } from 'antd';
-import { FolderOutlined, FileOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Layout, Tree, Table, Card, Tag, message, Drawer, Descriptions, Button, Switch } from 'antd';
+import { FolderOutlined, FileOutlined, FolderOpenOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import type { DataNode } from 'antd/es/tree';
 import type { ColumnsType } from 'antd/es/table';
-import { fileAPI } from '../services/api';
+import fileService from '../services/FileService';
 import { TreeData, TreeFileInfo } from '../types/api';
 import EllipsisWithTooltip from './EllipsisWithTooltip';
 
@@ -24,6 +24,14 @@ const FileTreePage: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugDrawerVisible, setDebugDrawerVisible] = useState(false);
+  const [serviceStats, setServiceStats] = useState<any>(null);
+
+  // 用于管理服务订阅
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const currentLoadPathRef = useRef<string | null>(null);
+  const statsIntervalRef = useRef<number | null>(null);
 
   const formatFileSize = (bytes: number): string => {
     if (!bytes) return '0 B';
@@ -60,9 +68,17 @@ const FileTreePage: React.FC = () => {
 
   // 加载树数据并同步树的展开状态
   const loadTreeData = async (path: string = '') => {
-    setLoading(true);
+    const normalizedPath = path || '/';
+    currentLoadPathRef.current = normalizedPath;
+
     try {
-      const data: TreeData = await fileAPI.getTreeData(path);
+      const data: TreeData = await fileService.getTreeData(path);
+
+      // 如果请求的路径已经不是当前关注的路径，则忽略结果
+      if (currentLoadPathRef.current !== normalizedPath) {
+        return;
+      }
+
       setCurrentPath(data.current_path);
       setFiles(data.files);
       setDirectories(data.directories);
@@ -76,18 +92,19 @@ const FileTreePage: React.FC = () => {
         setSelectedKeys([]);
       }
     } catch (error) {
-      message.error('加载目录数据失败');
-      console.error('Error loading tree data:', error);
-    } finally {
-      setLoading(false);
+      // 只处理当前路径的错误
+      if (currentLoadPathRef.current === normalizedPath) {
+        message.error('加载目录数据失败');
+        console.error('Error loading tree data:', error);
+      }
     }
   };
 
-  // 初始化根节点
+  // 初始化根节点和服务订阅
   useEffect(() => {
     const initTree = async () => {
       try {
-        const data = await fileAPI.getTreeData('');
+        const data = await fileService.getTreeData('');
         const rootNodes: TreeNodeData[] = data.directories.map(machine => ({
           title: machine,
           key: `/${machine}`,
@@ -101,8 +118,66 @@ const FileTreePage: React.FC = () => {
         message.error('初始化目录树失败');
       }
     };
+
+    // 订阅 FileService 的事件
+    unsubscribeRef.current = fileService.subscribe({
+      onDataUpdate: (path, data) => {
+        if (debugMode) {
+          console.log(`[FileTreePage] 收到数据更新: ${path}`);
+        }
+        // 如果更新的是当前路径，更新UI
+        if (path === currentPath || path === '/' || path === currentPath + '/') {
+          setCurrentPath(data.current_path);
+          setFiles(data.files);
+          setDirectories(data.directories);
+        }
+      },
+      onLoadingChange: (path, isLoading) => {
+        // 如果是当前路径正在加载，更新加载状态
+        if (path === currentPath || path === '/' || path === currentPath + '/') {
+          setLoading(isLoading);
+        }
+      },
+      onError: (path, error) => {
+        // 如果是当前路径出错，显示错误信息
+        if (path === currentPath || path === '/' || path === currentPath + '/') {
+          message.error(`加载目录数据失败: ${error.message}`);
+        }
+      },
+    });
+
     initTree();
-  }, []);
+
+    // 清理函数
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+      }
+    };
+  }, [currentPath, debugMode]);
+
+  // 调试模式：定期更新服务统计信息
+  useEffect(() => {
+    if (debugMode) {
+      const updateStats = () => {
+        setServiceStats(fileService.getServiceStats());
+      };
+
+      updateStats(); // 立即更新一次
+      statsIntervalRef.current = setInterval(updateStats, 1000); // 每秒更新
+
+      return () => {
+        if (statsIntervalRef.current) {
+          clearInterval(statsIntervalRef.current);
+        }
+      };
+    } else {
+      setServiceStats(null);
+    }
+  }, [debugMode]);
 
   // 动态加载子节点
   const onLoadData = async (node: TreeNodeData): Promise<void> => {
@@ -111,7 +186,7 @@ const FileTreePage: React.FC = () => {
     }
 
     try {
-      const data = await fileAPI.getTreeData(node.path);
+      const data = await fileService.getTreeData(node.path);
       const children: TreeNodeData[] = data.directories.map(dir => ({
         title: dir,
         key: `${node.path}/${dir}`,
@@ -153,6 +228,21 @@ const FileTreePage: React.FC = () => {
     if (selectedKeys.length > 0) {
       const path = selectedKeys[0] as string;
       await loadTreeData(path);
+
+      // 预加载子目录数据
+      if (directories.length > 0 && directories.length <= 10) {
+        const preloadPaths = directories.slice(0, 3).map(dir => `${path}/${dir}`.replace('//', '/'));
+        fileService.preloadPaths(preloadPaths);
+      }
+    }
+  };
+
+  // 刷新当前路径
+  const handleRefresh = async () => {
+    try {
+      await fileService.refreshPath(currentPath);
+    } catch (error) {
+      message.error('刷新失败');
     }
   };
 
@@ -235,9 +325,40 @@ const FileTreePage: React.FC = () => {
               <span>
                 当前路径: <Tag color="blue">{currentPath}</Tag>
               </span>
-              <span className="text-sm text-gray-500">
-                {directories.length} 个文件夹, {files.length} 个文件
-              </span>
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-500">
+                  {directories.length} 个文件夹, {files.length} 个文件
+                </span>
+                <div className="flex items-center gap-2">
+                  {debugMode && (
+                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                      调试模式
+                    </span>
+                  )}
+                  <Switch
+                    size="small"
+                    checked={debugMode}
+                    onChange={setDebugMode}
+                    title="切换调试模式"
+                  />
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<SettingOutlined />}
+                    onClick={() => setDebugDrawerVisible(true)}
+                    disabled={!debugMode}
+                    title="调试面板"
+                  />
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefresh}
+                    loading={loading}
+                    title="刷新当前目录"
+                  />
+                </div>
+              </div>
             </div>
           }
           loading={loading}
@@ -310,6 +431,70 @@ const FileTreePage: React.FC = () => {
               </>
             )}
           </Descriptions>
+        )}
+      </Drawer>
+
+      {/* 调试面板 */}
+      <Drawer
+        title="FileService 调试面板"
+        placement="right"
+        width={400}
+        onClose={() => setDebugDrawerVisible(false)}
+        open={debugDrawerVisible}
+      >
+        {serviceStats && (
+          <div className="space-y-4">
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="缓存大小">
+                <Tag color="blue">{serviceStats.cacheSize}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="等待中请求">
+                <Tag color={serviceStats.pendingRequests > 0 ? 'orange' : 'green'}>
+                  {serviceStats.pendingRequests}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="预加载队列">
+                <Tag color="purple">{serviceStats.prefetchQueueSize}</Tag>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <div>
+              <h4 className="text-sm font-semibold mb-2">最近访问路径</h4>
+              <div className="space-y-1">
+                {serviceStats.recentPaths.map((path: string, index: number) => (
+                  <div key={index} className="text-xs text-gray-600 bg-gray-50 p-1 rounded">
+                    {path || '/'}
+                  </div>
+                ))}
+                {serviceStats.recentPaths.length === 0 && (
+                  <div className="text-xs text-gray-400">暂无访问记录</div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Button
+                size="small"
+                block
+                onClick={() => fileService.clearCache()}
+              >
+                清空缓存
+              </Button>
+              <Button
+                size="small"
+                block
+                onClick={() => fileService.refreshPath(currentPath)}
+              >
+                强制刷新当前路径
+              </Button>
+            </div>
+
+            <div className="text-xs text-gray-500 space-y-1">
+              <div>• 缓存超时: 5分钟</div>
+              <div>• 自动预加载: 前2个子目录</div>
+              <div>• 请求去重: ✅ 启用</div>
+            </div>
+          </div>
         )}
       </Drawer>
     </Layout>
