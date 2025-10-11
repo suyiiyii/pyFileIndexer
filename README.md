@@ -19,7 +19,7 @@ pyFileIndexer 是一个高效的文件索引和去重工具，通过计算文件
 ```bash
 # 扫描当前目录
 docker run --rm -v $(pwd):$(pwd) \
-  ghcr.io/suyiiyii/pyfileindexer:latest \
+  ghcr.io/suyiiyii/pyfileindexer:main \
   scan $(pwd) \
   --machine-name "MyDevice" \
   --db-path $(pwd)/indexer.db \
@@ -83,6 +83,11 @@ uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output
 - `--source`: 源数据库文件列表（必需，支持多个）
 - `--output`: 输出合并后的数据库路径（默认：merged.db）
 - `--log-path`: 日志文件保存路径（默认：indexer.log）
+
+
+**Web 模式专用参数：**
+- `--port`: Web 服务器端口（默认：8000）
+- `--host`: Web 服务器主机地址（默认：0.0.0.0）
 
 ## 使用场景
 
