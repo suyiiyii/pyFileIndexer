@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { PaginatedFiles, Statistics, DuplicateFiles, FileWithHash } from '../types/api';
+import { PaginatedFiles, Statistics, DuplicateFiles, FileWithHash, TreeData } from '../types/api';
 
 const api = axios.create({
   baseURL: '/api',
@@ -51,6 +51,14 @@ export const fileAPI = {
   // 健康检查
   healthCheck: async (): Promise<{ status: string }> => {
     const response = await api.get('/health');
+    return response.data;
+  },
+
+  // 获取树形结构数据
+  getTreeData: async (path: string = ''): Promise<TreeData> => {
+    const response = await api.get('/tree', {
+      params: { path }
+    });
     return response.data;
   },
 };

@@ -19,6 +19,8 @@ from web_models import (
     FileMetaResponse,
     FileHashResponse,
     DuplicateFileGroup,
+    TreeDataResponse,
+    TreeFileInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -252,6 +254,49 @@ def create_app() -> FastAPI:
     async def health_check():
         """健康检查端点"""
         return {"status": "healthy"}
+
+    @app.get("/api/tree", response_model=TreeDataResponse)
+    async def get_tree_data(path: str = Query("")):
+        """获取树形结构数据
+
+        Args:
+            path: 路径，格式为 /machine/path1/path2 或空字符串，空字符串返回所有机器
+        """
+        try:
+            logger.info(f"Getting tree data for path: {path}")
+            result = db_manager.get_tree_data(path)
+
+            # 转换文件数据
+            files = []
+            for file_meta, file_hash in result['files']:
+                hash_response = None
+                if file_hash:
+                    hash_response = FileHashResponse(
+                        id=getattr(file_hash, "id", None),
+                        size=getattr(file_hash, "size", 0),
+                        md5=getattr(file_hash, "md5", ""),
+                        sha1=getattr(file_hash, "sha1", ""),
+                        sha256=getattr(file_hash, "sha256", ""),
+                    )
+
+                file_info = TreeFileInfo(
+                    name=getattr(file_meta, "name", ""),
+                    size=getattr(file_hash, "size", 0) if file_hash else 0,
+                    modified=getattr(file_meta, "modified", "1970-01-01T00:00:00"),
+                    hash=hash_response,
+                )
+                files.append(file_info)
+
+            return TreeDataResponse(
+                current_path=result['current_path'],
+                directories=result['directories'],
+                files=files,
+            )
+        except Exception as e:
+            logger.error(f"Error in get_tree_data endpoint: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500, detail=f"Internal server error: {str(e)}"
+            )
 
     # 配置静态文件服务
     project_root = Path(__file__).parent.parent

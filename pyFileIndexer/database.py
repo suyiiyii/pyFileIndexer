@@ -671,6 +671,107 @@ class DatabaseManager:
             if files_to_insert:
                 session.bulk_insert_mappings(FileMeta, files_to_insert)  # type: ignore
 
+    def get_tree_data(self, path: str = "") -> dict:
+        """获取树形结构数据
+
+        Args:
+            path: 路径，格式为 /machine/path1/path2 或空字符串
+                 空字符串时返回所有机器
+
+        Returns:
+            {
+                'current_path': str,
+                'directories': [str],  # 子目录名称列表
+                'files': [(FileMeta, FileHash)]  # 当前目录的文件
+            }
+        """
+        logger = logging.getLogger(__name__)
+
+        with self.session_scope() as session:
+            # 如果路径为空，返回所有机器名作为根目录
+            if not path or path == "/":
+                machines = session.query(FileMeta.machine).distinct().all()
+                return {
+                    'current_path': '/',
+                    'directories': [m[0] for m in machines],
+                    'files': []
+                }
+
+            # 解析路径
+            path = path.strip('/')
+            parts = path.split('/')
+            machine = parts[0]
+
+            # 构建文件路径前缀
+            if len(parts) == 1:
+                # 只有machine，查询该机器下的所有顶级目录和文件
+                path_prefix = ""
+            else:
+                # 有具体路径
+                path_prefix = '/'.join(parts[1:])
+                # 确保前缀以 / 开头(如果不为空)
+                if path_prefix and not path_prefix.startswith('/'):
+                    path_prefix = '/' + path_prefix
+
+            logger.debug(f"Querying tree data: machine={machine}, path_prefix={path_prefix}")
+
+            # 查询该机器下的所有文件
+            query = session.query(FileMeta, FileHash).outerjoin(
+                FileHash, FileMeta.hash_id == FileHash.id
+            ).filter(FileMeta.machine == machine)
+
+            all_files = query.all()
+            logger.debug(f"Found {len(all_files)} total files for machine {machine}")
+
+            # 提取当前目录的子目录和直接文件
+            directories = set()
+            current_files = []
+
+            for file_meta, file_hash in all_files:
+                file_path = file_meta.path  # type: ignore
+
+                # 规范化文件路径,确保以 / 开头
+                if file_path and not file_path.startswith('/'):
+                    file_path = '/' + file_path
+
+                # 计算相对于当前路径的相对路径
+                if path_prefix:
+                    # 如果当前在子目录,检查文件是否在此目录下
+                    if not file_path.startswith(path_prefix + '/'):
+                        continue
+                    # 移除前缀,得到相对路径
+                    relative = file_path[len(path_prefix):].strip('/')
+                else:
+                    # 在机器根目录,直接使用文件路径作为相对路径
+                    relative = file_path.strip('/')
+
+                # 跳过空路径
+                if not relative:
+                    continue
+
+                # 如果相对路径包含'/'，说明是子目录中的文件
+                if '/' in relative:
+                    # 提取第一级目录名
+                    dir_name = relative.split('/')[0]
+                    if dir_name:  # 确保目录名不为空
+                        directories.add(dir_name)
+                else:
+                    # 是当前目录的文件
+                    # 使用 inspect 检查对象是否在 session 中,避免重复 expunge
+                    if file_meta and sa_inspect(file_meta).session is not None:
+                        session.expunge(file_meta)
+                    if file_hash and sa_inspect(file_hash).session is not None:
+                        session.expunge(file_hash)
+                    current_files.append((file_meta, file_hash))
+
+            logger.debug(f"Extracted {len(directories)} directories and {len(current_files)} files")
+
+            return {
+                'current_path': '/' + path,
+                'directories': sorted(list(directories)),
+                'files': current_files
+            }
+
 
 # 创建全局单例实例
 db_manager = DatabaseManager()

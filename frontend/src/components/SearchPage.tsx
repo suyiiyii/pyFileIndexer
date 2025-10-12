@@ -4,6 +4,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { fileAPI } from '../services/api';
 import { FileWithHash } from '../types/api';
+import EllipsisWithTooltip from './EllipsisWithTooltip';
 
 const { Option } = Select;
 
@@ -36,16 +37,17 @@ const SearchPage: React.FC = () => {
       title: '文件名',
       dataIndex: ['meta', 'name'],
       key: 'name',
-      ellipsis: true,
       width: 200,
+      ellipsis: true,
       render: (name) => {
+        let content = name;
         if (searchType === 'name' && searchQuery) {
           const index = name.toLowerCase().indexOf(searchQuery.toLowerCase());
           if (index >= 0) {
             const beforeStr = name.substring(0, index);
             const matchStr = name.substring(index, index + searchQuery.length);
             const afterStr = name.substring(index + searchQuery.length);
-            return (
+            content = (
               <span>
                 {beforeStr}
                 <mark style={{ backgroundColor: '#ffe58f', padding: 0 }}>{matchStr}</mark>
@@ -54,23 +56,24 @@ const SearchPage: React.FC = () => {
             );
           }
         }
-        return name;
+        return <EllipsisWithTooltip text={name} showCopyIcon>{content}</EllipsisWithTooltip>;
       },
     },
     {
       title: '路径',
       dataIndex: ['meta', 'path'],
       key: 'path',
-      ellipsis: true,
       width: 350,
+      ellipsis: true,
       render: (path) => {
+        let content = path;
         if (searchType === 'path' && searchQuery) {
           const index = path.toLowerCase().indexOf(searchQuery.toLowerCase());
           if (index >= 0) {
             const beforeStr = path.substring(0, index);
             const matchStr = path.substring(index, index + searchQuery.length);
             const afterStr = path.substring(index + searchQuery.length);
-            return (
+            content = (
               <span>
                 {beforeStr}
                 <mark style={{ backgroundColor: '#ffe58f', padding: 0 }}>{matchStr}</mark>
@@ -79,7 +82,7 @@ const SearchPage: React.FC = () => {
             );
           }
         }
-        return path;
+        return <EllipsisWithTooltip text={path} showCopyIcon>{content}</EllipsisWithTooltip>;
       },
     },
     {
@@ -121,12 +124,13 @@ const SearchPage: React.FC = () => {
       ellipsis: true,
       render: (md5) => {
         if (!md5) return '-';
+        let content = <code style={{ fontSize: '12px' }}>{md5}</code>;
         if (searchType === 'hash' && searchQuery && md5.includes(searchQuery)) {
           const index = md5.indexOf(searchQuery);
           const beforeStr = md5.substring(0, index);
           const matchStr = md5.substring(index, index + searchQuery.length);
           const afterStr = md5.substring(index + searchQuery.length);
-          return (
+          content = (
             <code style={{ fontSize: '12px' }}>
               {beforeStr}
               <mark style={{ backgroundColor: '#ffe58f', padding: 0 }}>{matchStr}</mark>
@@ -134,7 +138,7 @@ const SearchPage: React.FC = () => {
             </code>
           );
         }
-        return <code style={{ fontSize: '12px' }}>{md5}</code>;
+        return <EllipsisWithTooltip text={md5} showCopyIcon>{content}</EllipsisWithTooltip>;
       },
     },
     {
@@ -145,12 +149,13 @@ const SearchPage: React.FC = () => {
       ellipsis: true,
       render: (sha1) => {
         if (!sha1) return '-';
+        let content = <code style={{ fontSize: '12px' }}>{sha1}</code>;
         if (searchType === 'hash' && searchQuery && sha1.includes(searchQuery)) {
           const index = sha1.indexOf(searchQuery);
           const beforeStr = sha1.substring(0, index);
           const matchStr = sha1.substring(index, index + searchQuery.length);
           const afterStr = sha1.substring(index + searchQuery.length);
-          return (
+          content = (
             <code style={{ fontSize: '12px' }}>
               {beforeStr}
               <mark style={{ backgroundColor: '#ffe58f', padding: 0 }}>{matchStr}</mark>
@@ -158,7 +163,7 @@ const SearchPage: React.FC = () => {
             </code>
           );
         }
-        return <code style={{ fontSize: '12px' }}>{sha1}</code>;
+        return <EllipsisWithTooltip text={sha1} showCopyIcon>{content}</EllipsisWithTooltip>;
       },
     },
     {
@@ -169,12 +174,13 @@ const SearchPage: React.FC = () => {
       ellipsis: true,
       render: (sha256) => {
         if (!sha256) return '-';
+        let content = <code style={{ fontSize: '12px' }}>{sha256}</code>;
         if (searchType === 'hash' && searchQuery && sha256.includes(searchQuery)) {
           const index = sha256.indexOf(searchQuery);
           const beforeStr = sha256.substring(0, index);
           const matchStr = sha256.substring(index, index + searchQuery.length);
           const afterStr = sha256.substring(index + searchQuery.length);
-          return (
+          content = (
             <code style={{ fontSize: '12px' }}>
               {beforeStr}
               <mark style={{ backgroundColor: '#ffe58f', padding: 0 }}>{matchStr}</mark>
@@ -182,7 +188,7 @@ const SearchPage: React.FC = () => {
             </code>
           );
         }
-        return <code style={{ fontSize: '12px' }}>{sha256}</code>;
+        return <EllipsisWithTooltip text={sha256} showCopyIcon>{content}</EllipsisWithTooltip>;
       },
     },
   ];
