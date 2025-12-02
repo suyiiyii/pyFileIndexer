@@ -190,7 +190,7 @@ class DatabaseInspector:
     def get_duplicate_files(self) -> List[List[str]]:
         """获取重复文件列表"""
         with self.db_manager.session_factory() as session:
-            from models import FileMeta, FileHash
+            from models import FileMeta
             from sqlalchemy import func
 
             # 查找有多个文件引用的哈希

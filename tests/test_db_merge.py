@@ -3,7 +3,6 @@
 import datetime
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -20,9 +19,7 @@ def temp_db_files():
     """Create temporary database files for testing."""
     temp_files = []
     for i in range(3):
-        temp_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".db", delete=False
-        )
+        temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".db", delete=False)
         temp_file.close()
         temp_files.append(temp_file.name)
 

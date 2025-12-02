@@ -474,7 +474,9 @@ class DatabaseManager:
 
             # 应用分页
             offset = (page - 1) * per_page
-            duplicate_hashes = duplicate_hashes_query.offset(offset).limit(per_page).all()
+            duplicate_hashes = (
+                duplicate_hashes_query.offset(offset).limit(per_page).all()
+            )
 
             duplicates = []
             total_files_count = 0
@@ -692,14 +694,14 @@ class DatabaseManager:
             if not path or path == "/":
                 machines = session.query(FileMeta.machine).distinct().all()
                 return {
-                    'current_path': '/',
-                    'directories': [m[0] for m in machines],
-                    'files': []
+                    "current_path": "/",
+                    "directories": [m[0] for m in machines],
+                    "files": [],
                 }
 
             # 解析路径
-            path = path.strip('/')
-            parts = path.split('/')
+            path = path.strip("/")
+            parts = path.split("/")
             machine = parts[0]
 
             # 构建文件路径前缀
@@ -708,17 +710,21 @@ class DatabaseManager:
                 path_prefix = ""
             else:
                 # 有具体路径
-                path_prefix = '/'.join(parts[1:])
+                path_prefix = "/".join(parts[1:])
                 # 确保前缀以 / 开头(如果不为空)
-                if path_prefix and not path_prefix.startswith('/'):
-                    path_prefix = '/' + path_prefix
+                if path_prefix and not path_prefix.startswith("/"):
+                    path_prefix = "/" + path_prefix
 
-            logger.debug(f"Querying tree data: machine={machine}, path_prefix={path_prefix}")
+            logger.debug(
+                f"Querying tree data: machine={machine}, path_prefix={path_prefix}"
+            )
 
             # 查询该机器下的所有文件
-            query = session.query(FileMeta, FileHash).outerjoin(
-                FileHash, FileMeta.hash_id == FileHash.id
-            ).filter(FileMeta.machine == machine)
+            query = (
+                session.query(FileMeta, FileHash)
+                .outerjoin(FileHash, FileMeta.hash_id == FileHash.id)
+                .filter(FileMeta.machine == machine)
+            )
 
             all_files = query.all()
             logger.debug(f"Found {len(all_files)} total files for machine {machine}")
@@ -731,28 +737,28 @@ class DatabaseManager:
                 file_path = file_meta.path  # type: ignore
 
                 # 规范化文件路径,确保以 / 开头
-                if file_path and not file_path.startswith('/'):
-                    file_path = '/' + file_path
+                if file_path and not file_path.startswith("/"):
+                    file_path = "/" + file_path
 
                 # 计算相对于当前路径的相对路径
                 if path_prefix:
                     # 如果当前在子目录,检查文件是否在此目录下
-                    if not file_path.startswith(path_prefix + '/'):
+                    if not file_path.startswith(path_prefix + "/"):
                         continue
                     # 移除前缀,得到相对路径
-                    relative = file_path[len(path_prefix):].strip('/')
+                    relative = file_path[len(path_prefix) :].strip("/")
                 else:
                     # 在机器根目录,直接使用文件路径作为相对路径
-                    relative = file_path.strip('/')
+                    relative = file_path.strip("/")
 
                 # 跳过空路径
                 if not relative:
                     continue
 
                 # 如果相对路径包含'/'，说明是子目录中的文件
-                if '/' in relative:
+                if "/" in relative:
                     # 提取第一级目录名
-                    dir_name = relative.split('/')[0]
+                    dir_name = relative.split("/")[0]
                     if dir_name:  # 确保目录名不为空
                         directories.add(dir_name)
                 else:
@@ -764,12 +770,14 @@ class DatabaseManager:
                         session.expunge(file_hash)
                     current_files.append((file_meta, file_hash))
 
-            logger.debug(f"Extracted {len(directories)} directories and {len(current_files)} files")
+            logger.debug(
+                f"Extracted {len(directories)} directories and {len(current_files)} files"
+            )
 
             return {
-                'current_path': '/' + path,
-                'directories': sorted(list(directories)),
-                'files': current_files
+                "current_path": "/" + path,
+                "directories": sorted(list(directories)),
+                "files": current_files,
             }
 
 

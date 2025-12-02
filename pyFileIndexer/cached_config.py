@@ -43,7 +43,9 @@ class CachedConfig:
             self._max_archive_file_size: int = getattr(
                 settings, "MAX_ARCHIVE_FILE_SIZE", 9223372036854775807
             )
-            self._skip_rules_enabled: bool = getattr(settings, "ENABLE_IGNORE_RULES", False)
+            self._skip_rules_enabled: bool = getattr(
+                settings, "ENABLE_IGNORE_RULES", False
+            )
 
             # 标记已初始化
             self._initialized = True

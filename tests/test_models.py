@@ -1,7 +1,5 @@
 import pytest
 from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 import sys
 from pathlib import Path
@@ -9,7 +7,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
 
 from models import FileHash, FileMeta
-from database import Base
 
 
 class TestFileHash:

@@ -193,7 +193,9 @@ def create_app() -> FastAPI:
     async def get_duplicate_files(
         page: int = Query(1, ge=1, description="页码"),
         per_page: int = Query(20, ge=1, le=100, description="每页数量"),
-        min_size: int = Query(1048576, ge=0, description="最小文件大小（字节），默认1MB"),
+        min_size: int = Query(
+            1048576, ge=0, description="最小文件大小（字节），默认1MB"
+        ),
         min_count: int = Query(2, ge=2, description="最小重复数量"),
         sort_by: str = Query(
             "count_desc",
@@ -268,7 +270,7 @@ def create_app() -> FastAPI:
 
             # 转换文件数据
             files = []
-            for file_meta, file_hash in result['files']:
+            for file_meta, file_hash in result["files"]:
                 hash_response = None
                 if file_hash:
                     hash_response = FileHashResponse(
@@ -288,8 +290,8 @@ def create_app() -> FastAPI:
                 files.append(file_info)
 
             return TreeDataResponse(
-                current_path=result['current_path'],
-                directories=result['directories'],
+                current_path=result["current_path"],
+                directories=result["directories"],
                 files=files,
             )
         except Exception as e:

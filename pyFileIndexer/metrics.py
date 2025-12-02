@@ -3,6 +3,7 @@ from typing import Optional
 PROM_AVAILABLE = False
 try:
     from prometheus_client import Counter, Gauge, Histogram, Summary, start_http_server
+
     PROM_AVAILABLE = True
 except Exception:
     pass
@@ -11,36 +12,52 @@ except Exception:
 class _NoOp:
     def start_http_server(self, port: int, host: str = "0.0.0.0"):
         return
+
     def init(self, machine: str):
         return
+
     def enabled(self) -> bool:
         return False
+
     def set_scan_in_progress(self, value: int):
         return
+
     def set_queue_size(self, value: int):
         return
+
     def set_workers(self, value: int):
         return
+
     def inc_files(self, n: int = 1):
         return
+
     def inc_dirs(self, n: int = 1):
         return
+
     def inc_archives(self, archive_type: str, n: int = 1):
         return
+
     def inc_archive_entries(self, archive_type: str, n: int = 1):
         return
+
     def inc_errors(self, scope: str, n: int = 1):
         return
+
     def inc_db_writes(self, n: int = 1):
         return
+
     def inc_bytes(self, n: int):
         return
+
     def observe_file_duration(self, seconds: float):
         return
+
     def observe_db_flush(self, seconds: float, batch_size: int):
         return
+
     def set_scan_start_timestamp(self, ts: float):
         return
+
     def observe_scan_duration(self, seconds: float):
         return
 

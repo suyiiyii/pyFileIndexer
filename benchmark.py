@@ -8,7 +8,6 @@ pyFileIndexer 性能测试脚本
 
 import argparse
 import json
-import os
 import psutil
 import random
 import shutil
@@ -281,7 +280,7 @@ class BenchmarkRunner:
 
     def _run_incremental_test(self):
         """运行增量扫描测试"""
-        print(f"\n🔄 运行增量扫描测试")
+        print("\n🔄 运行增量扫描测试")
 
         test_dir = self.temp_dir / "test_incremental"
         db_path = self.temp_dir / "test_incremental.db"
@@ -321,7 +320,7 @@ class BenchmarkRunner:
 
     def _run_modification_test(self):
         """运行文件修改测试"""
-        print(f"\n📝 运行文件修改测试")
+        print("\n📝 运行文件修改测试")
 
         test_dir = self.temp_dir / "test_modification"
         db_path = self.temp_dir / "test_modification.db"
@@ -414,7 +413,7 @@ class BenchmarkRunner:
             resource_metrics = monitor.stop()
 
             if result.returncode != 0:
-                print(f"    错误: CLI 命令执行失败")
+                print("    错误: CLI 命令执行失败")
                 print(f"    stdout: {result.stdout}")
                 print(f"    stderr: {result.stderr}")
                 return None
@@ -446,7 +445,7 @@ class BenchmarkRunner:
 
         except subprocess.TimeoutExpired:
             monitor.stop()
-            print(f"    错误: 测试超时")
+            print("    错误: 测试超时")
             return None
         except Exception as e:
             monitor.stop()
@@ -486,7 +485,7 @@ class BenchmarkReporter:
         summary_path = output_dir / "benchmark_summary.txt"
         BenchmarkReporter._generate_summary_report(results, summary_path)
 
-        print(f"\n📊 报告已生成:")
+        print("\n📊 报告已生成:")
         print(f"  JSON 详细报告: {json_path}")
         print(f"  文本报告: {text_path}")
         print(f"  汇总报告: {summary_path}")

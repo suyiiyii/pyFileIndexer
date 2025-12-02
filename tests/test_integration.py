@@ -2,10 +2,9 @@ import pytest
 import os
 import threading
 import time
-import tempfile
 from pathlib import Path
 from datetime import datetime
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 import subprocess
 
 import sys
@@ -873,7 +872,12 @@ __pycache__
             env = os.environ.copy()
             env["DYNACONF_ENABLE_IGNORE_RULES"] = "true"
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60, cwd=project_root, env=env
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=project_root,
+                env=env,
             )
         finally:
             # 清理.ignore文件
@@ -1551,7 +1555,7 @@ class TestArchiveIntegration:
 
         # 连接数据库验证结果
         from pyFileIndexer.database import DatabaseManager
-        from pyFileIndexer.models import FileMeta, FileHash
+        from pyFileIndexer.models import FileMeta
 
         db_manager = DatabaseManager(str(db_path))
         try:

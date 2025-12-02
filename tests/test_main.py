@@ -5,7 +5,7 @@ import queue
 import time
 from pathlib import Path
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import sys
 
@@ -20,8 +20,7 @@ from main import (
     ignore_dirs,
     ignore_partials_dirs,
 )
-from models import FileHash, FileMeta
-from database import db_manager
+from models import FileMeta
 
 
 class TestUtilityFunctions:
@@ -323,6 +322,7 @@ class TestFileScanningLogic:
         with patch("main.db_manager", memory_db_manager):
             scan_file(small_file)
             from main import batch_processor
+
             batch_processor.flush()
 
             file_meta = memory_db_manager.get_file_by_path(str(small_file.absolute()))
@@ -333,6 +333,7 @@ class TestFileScanningLogic:
 
             with memory_db_manager.session_factory() as session:
                 from models import FileMeta
+
                 file = (
                     session.query(FileMeta)
                     .filter_by(path=str(small_file.absolute()))

@@ -5,7 +5,6 @@
 """
 
 from datetime import datetime
-from pathlib import Path
 
 # 示例文件哈希数据
 SAMPLE_HASHES = [

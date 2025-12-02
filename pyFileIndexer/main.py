@@ -351,7 +351,9 @@ def scan_file_worker(
             if pbar:
                 pbar.update(1)
         except Exception as e:
-            logger.exception(f"Unexpected error in worker thread while processing {current_file}: {type(e).__name__}: {e}")
+            logger.exception(
+                f"Unexpected error in worker thread while processing {current_file}: {type(e).__name__}: {e}"
+            )
             try:
                 metrics.inc_errors("worker")
             except Exception:
@@ -381,7 +383,12 @@ def should_skip_directory(path: Path) -> bool:
     return False
 
 
-def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: "queue.Queue[Path]", pbar: Optional["tqdm[Any]"] = None):
+def scan_directory(
+    directory: Path,
+    file_queue: "queue.Queue[Path]",
+    dir_queue: "queue.Queue[Path]",
+    pbar: Optional["tqdm[Any]"] = None,
+):
     """遍历单个目录，将文件放入file_queue，子目录放入dir_queue（非递归，BFS方式）。"""
     if stop_event.is_set():
         return
@@ -441,13 +448,7 @@ def scan(path: Union[str, Path]):
     logger.info(f"使用 {num_threads} 个线程并行进行目录遍历和文件处理")
 
     # 创建全局进度条
-    pbar = tqdm(
-        total=0,
-        desc="扫描文件",
-        unit="files",
-        position=0,
-        leave=True
-    )
+    pbar = tqdm(total=0, desc="扫描文件", unit="files", position=0, leave=True)
 
     # 每3秒强制刷新一次进度条
     refresh_stop_event = threading.Event()
@@ -465,7 +466,9 @@ def scan(path: Union[str, Path]):
             except Exception:
                 pass
 
-    refresh_thread = threading.Thread(target=_force_refresh, name="ProgressRefresher", daemon=True)
+    refresh_thread = threading.Thread(
+        target=_force_refresh, name="ProgressRefresher", daemon=True
+    )
     refresh_thread.start()
 
     # 启动文件处理worker线程（在后台持续工作）
@@ -473,9 +476,7 @@ def scan(path: Union[str, Path]):
 
     for i in range(num_threads):
         worker = threading.Thread(
-            target=scan_file_worker,
-            args=(file_queue, pbar),
-            name=f"FileWorker-{i}"
+            target=scan_file_worker, args=(file_queue, pbar), name=f"FileWorker-{i}"
         )
         worker.start()
         workers.append(worker)
@@ -493,7 +494,9 @@ def scan(path: Union[str, Path]):
             try:
                 directory = dir_queue.get(timeout=0.1)
                 # 提交目录扫描任务并记录future
-                future = dir_executor.submit(scan_directory, directory, file_queue, dir_queue, pbar)
+                future = dir_executor.submit(
+                    scan_directory, directory, file_queue, dir_queue, pbar
+                )
                 pending_futures.add(future)
                 dir_queue.task_done()
             except queue.Empty:
@@ -655,25 +658,33 @@ if __name__ == "__main__":
                 if not metrics.enabled():
                     logger.info("Prometheus client not installed, metrics disabled")
                 else:
-                    start_port = args.metrics_port if args.metrics_port and args.metrics_port > 0 else 9000
+                    start_port = (
+                        args.metrics_port
+                        if args.metrics_port and args.metrics_port > 0
+                        else 9000
+                    )
                     max_port = start_port + 100
                     started = False
                     for port in range(start_port, max_port + 1):
                         try:
                             metrics.start_http_server(port, args.metrics_host)
-                            logger.info(f"Metrics listening on {args.metrics_host}:{port}")
+                            logger.info(
+                                f"Metrics listening on {args.metrics_host}:{port}"
+                            )
                             started = True
                             break
                         except Exception:
                             continue
                     if not started:
-                        logger.warning("Metrics server start failed on all candidate ports")
+                        logger.warning(
+                            "Metrics server start failed on all candidate ports"
+                        )
             except Exception as e:
                 logger.warning(f"Metrics server start failed: {e}")
 
         # 注册信号处理器
         signal.signal(signal.SIGINT, signal_handler)
-        if hasattr(signal, 'SIGTERM'):
+        if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, signal_handler)
 
         try:

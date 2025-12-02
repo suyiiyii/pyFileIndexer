@@ -43,7 +43,9 @@ def make_meta(name, path, machine, size, ts):
             operation="ADD",
             hash_id=None,
         ),
-        FileHash(size=size, md5=f"md5-{name}", sha1=f"sha1-{name}", sha256=f"sha256-{name}")
+        FileHash(
+            size=size, md5=f"md5-{name}", sha1=f"sha1-{name}", sha256=f"sha256-{name}"
+        ),
     )
 
 
@@ -114,12 +116,30 @@ def test_statistics(client):
 def test_duplicates(client):
     ts = datetime(2024, 1, 1, 12, 0, 0)
     h = FileHash(size=2_000_000, md5="dupe", sha1="s", sha256="t")
-    m1 = FileMeta(name="a.bin", path="/d/a.bin", machine="M", created=ts, modified=ts, scanned=ts, operation="ADD")
-    m2 = FileMeta(name="b.bin", path="/d/b.bin", machine="M", created=ts, modified=ts, scanned=ts, operation="ADD")
-    db_manager.add_files_batch([
-        {"file_meta": m1, "file_hash": h, "operation": "ADD"},
-        {"file_meta": m2, "file_hash": h, "operation": "ADD"},
-    ])
+    m1 = FileMeta(
+        name="a.bin",
+        path="/d/a.bin",
+        machine="M",
+        created=ts,
+        modified=ts,
+        scanned=ts,
+        operation="ADD",
+    )
+    m2 = FileMeta(
+        name="b.bin",
+        path="/d/b.bin",
+        machine="M",
+        created=ts,
+        modified=ts,
+        scanned=ts,
+        operation="ADD",
+    )
+    db_manager.add_files_batch(
+        [
+            {"file_meta": m1, "file_hash": h, "operation": "ADD"},
+            {"file_meta": m2, "file_hash": h, "operation": "ADD"},
+        ]
+    )
 
     r = client.get(
         "/api/duplicates",

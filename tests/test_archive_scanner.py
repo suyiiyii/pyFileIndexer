@@ -5,9 +5,7 @@ import tempfile
 import zipfile
 import tarfile
 from pathlib import Path
-from unittest.mock import Mock, patch
 
-import pytest
 
 from pyFileIndexer.archive_scanner import (
     is_archive_file,

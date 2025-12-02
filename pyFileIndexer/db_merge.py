@@ -112,9 +112,7 @@ def _merge_single_database(
                 stats["total_files_processed"] += 1
 
                 # Check if file already exists in target database
-                existing = target_db_manager.get_file_with_hash_by_path(
-                    file_meta.path
-                )
+                existing = target_db_manager.get_file_with_hash_by_path(file_meta.path)
 
                 if existing:
                     existing_meta, existing_hash = existing

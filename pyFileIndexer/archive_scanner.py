@@ -139,13 +139,13 @@ class ZipArchiveScanner(ArchiveScanner):
         # 没有 UTF-8 标志，可能是 GBK 等其他编码
         # 先获取原始字节（通过 cp437 重新编码）
         try:
-            raw_bytes = zip_info.filename.encode('cp437')
+            raw_bytes = zip_info.filename.encode("cp437")
         except (UnicodeEncodeError, UnicodeDecodeError):
             # 如果 cp437 编码失败，返回原文件名
             return zip_info.filename
 
         # 尝试多种编码解码
-        encodings = ['gbk', 'gb18030', 'utf-8', 'big5']
+        encodings = ["gbk", "gb18030", "utf-8", "big5"]
         for encoding in encodings:
             try:
                 decoded = raw_bytes.decode(encoding)
