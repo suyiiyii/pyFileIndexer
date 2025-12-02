@@ -10,8 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
 
-from .database import db_manager
-from .web_models import (
+from database import db_manager
+from web_models import (
     PaginatedFilesResponse,
     StatisticsResponse,
     DuplicateFilesResponse,

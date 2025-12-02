@@ -1,12 +1,14 @@
+import sys
 from pathlib import Path
 from datetime import datetime
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
 
 from fastapi.testclient import TestClient
-from pyFileIndexer.database import db_manager
-from pyFileIndexer.web_server import create_app
-from pyFileIndexer.models import FileMeta, FileHash
+from database import db_manager
+from web_server import create_app
+from models import FileMeta, FileHash
 
 
 @pytest.fixture

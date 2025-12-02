@@ -9,7 +9,7 @@ import datetime
 import threading
 from typing import Optional
 
-from .config import settings
+from config import settings
 
 
 class CachedConfig:

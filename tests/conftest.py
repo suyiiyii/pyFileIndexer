@@ -4,9 +4,13 @@ from datetime import datetime
 from typing import Generator, Dict, Any, Optional
 import pytest
 
-from pyFileIndexer.database import DatabaseManager, Base
-from pyFileIndexer.models import FileHash, FileMeta
-from pyFileIndexer.config import settings
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
+
+from database import DatabaseManager, Base
+from models import FileHash, FileMeta
+from config import settings
 
 
 @pytest.fixture(scope="session")

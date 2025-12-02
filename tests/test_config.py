@@ -3,7 +3,11 @@ import os
 from pathlib import Path
 from datetime import datetime
 
-from pyFileIndexer.config import settings
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
+
+from config import settings
 from dynaconf import Dynaconf
 
 
@@ -238,7 +242,7 @@ class TestConfigInAppContext:
     def test_machine_name_retrieval(self, mock_settings):
         """测试获取机器名称配置"""
         # mock_settings fixture 已经设置了 MACHINE_NAME
-        from pyFileIndexer.config import settings
+        from config import settings
 
         # 由于 settings 是全局单例，我们需要通过 monkeypatch 来模拟
         # 这里测试 getattr 的使用方式（如 main.py 中使用的）
@@ -248,7 +252,7 @@ class TestConfigInAppContext:
     @pytest.mark.unit
     def test_scanned_time_retrieval(self, mock_settings):
         """测试获取扫描时间配置"""
-        from pyFileIndexer.config import settings
+        from config import settings
 
         # 测试 getattr 的使用方式
         scanned = getattr(settings, "SCANNED", None)
@@ -259,7 +263,7 @@ class TestConfigInAppContext:
     @pytest.mark.unit
     def test_config_error_handling(self):
         """测试配置错误处理"""
-        from pyFileIndexer.config import settings
+        from config import settings
 
         # 测试访问不存在的配置项
         nonexistent = getattr(settings, "NONEXISTENT_CONFIG", "default_value")

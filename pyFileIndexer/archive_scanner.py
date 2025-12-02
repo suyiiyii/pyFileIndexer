@@ -7,7 +7,7 @@ import datetime
 
 import rarfile
 
-from .models import FileMeta
+from models import FileMeta
 
 logger = logging.getLogger(__name__)
 

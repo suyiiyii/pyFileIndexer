@@ -1,11 +1,14 @@
+import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from pyFileIndexer.database import DatabaseManager
-from pyFileIndexer.models import FileHash, FileMeta
+sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
+
+from database import DatabaseManager
+from models import FileHash, FileMeta
 
 
 class TestDatabaseManager:

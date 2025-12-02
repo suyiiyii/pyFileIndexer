@@ -7,8 +7,8 @@ from sqlalchemy import create_engine, tuple_, text, func, inspect as sa_inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
 
-from .base import Base
-from .models import FileHash, FileMeta
+from base import Base
+from models import FileHash, FileMeta
 
 
 class DatabaseManager:

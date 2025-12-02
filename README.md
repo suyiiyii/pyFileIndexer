@@ -85,7 +85,7 @@ docker run --rm \
 uv sync
 
 # 扫描指定目录
-uv run python -m pyFileIndexer.main scan /path/to/scan \
+uv run python pyFileIndexer/main.py scan /path/to/scan \
   --machine-name "MyLaptop" \
   --db-path ./files.db \
   --log-path ./scan.log
@@ -100,7 +100,7 @@ pyFileIndexer 使用子命令方式运行，支持三种模式：
 扫描指定目录，建立文件索引：
 
 ```bash
-uv run python -m pyFileIndexer.main scan <path> [选项]
+uv run python pyFileIndexer/main.py scan <path> [选项]
 ```
 
 **参数：**
@@ -114,7 +114,7 @@ uv run python -m pyFileIndexer.main scan <path> [选项]
 启动 Web 界面，浏览和搜索已索引的文件：
 
 ```bash
-uv run python -m pyFileIndexer.main serve [选项]
+uv run python pyFileIndexer/main.py serve [选项]
 ```
 
 **参数：**
@@ -128,7 +128,7 @@ uv run python -m pyFileIndexer.main serve [选项]
 合并多个数据库文件：
 
 ```bash
-uv run python -m pyFileIndexer.main merge --source db1.db db2.db db3.db --output merged.db
+uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output merged.db
 ```
 
 **参数：**
@@ -158,17 +158,17 @@ HAVING COUNT(*) > 1;
 扫描不同设备并汇总到一个数据库：
 ```bash
 # 在不同设备上分别扫描
-uv run python -m pyFileIndexer.main scan /Volumes/USB1 --machine-name "USB1" --db-path usb1.db
-uv run python -m pyFileIndexer.main scan /nas/data --machine-name "NAS" --db-path nas.db
-uv run python -m pyFileIndexer.main scan /backup --machine-name "BackupDisk" --db-path backup.db
+uv run python pyFileIndexer/main.py scan /Volumes/USB1 --machine-name "USB1" --db-path usb1.db
+uv run python pyFileIndexer/main.py scan /nas/data --machine-name "NAS" --db-path nas.db
+uv run python pyFileIndexer/main.py scan /backup --machine-name "BackupDisk" --db-path backup.db
 
 # 合并所有数据库
-uv run python -m pyFileIndexer.main merge \
+uv run python pyFileIndexer/main.py merge \
   --source usb1.db nas.db backup.db \
   --output all_devices.db
 
 # 使用合并后的数据库查找跨设备的重复文件
-uv run python -m pyFileIndexer.main serve --db-path all_devices.db
+uv run python pyFileIndexer/main.py serve --db-path all_devices.db
 ```
 
 ### 3. 定期备份扫描
@@ -234,10 +234,10 @@ __pycache__
 
 ```bash
 # 确保已扫描文件并生成数据库
-uv run python -m pyFileIndexer.main scan /path/to/scan --db-path files.db
+uv run python pyFileIndexer/main.py scan /path/to/scan --db-path files.db
 
 # 启动 Web 服务器
-uv run python -m pyFileIndexer.main serve --db-path files.db --port 8000
+uv run python pyFileIndexer/main.py serve --db-path files.db --port 8000
 ```
 
 ### 前端构建

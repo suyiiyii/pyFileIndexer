@@ -8,8 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from tqdm import tqdm
 
-from .models import FileHash, FileMeta
-from .database import DatabaseManager
+from models import FileHash, FileMeta
+from database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 

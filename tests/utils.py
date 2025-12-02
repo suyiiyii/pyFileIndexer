@@ -176,21 +176,21 @@ class DatabaseInspector:
     def get_file_count(self) -> int:
         """获取文件数量"""
         with self.db_manager.session_factory() as session:
-            from pyFileIndexer.models import FileMeta
+            from models import FileMeta
 
             return session.query(FileMeta).count()
 
     def get_hash_count(self) -> int:
         """获取哈希数量"""
         with self.db_manager.session_factory() as session:
-            from pyFileIndexer.models import FileHash
+            from models import FileHash
 
             return session.query(FileHash).count()
 
     def get_duplicate_files(self) -> List[List[str]]:
         """获取重复文件列表"""
         with self.db_manager.session_factory() as session:
-            from pyFileIndexer.models import FileMeta, FileHash
+            from models import FileMeta, FileHash
             from sqlalchemy import func
 
             # 查找有多个文件引用的哈希
@@ -212,7 +212,7 @@ class DatabaseInspector:
     def get_files_by_machine(self, machine_name: str) -> List[str]:
         """获取指定机器的文件列表"""
         with self.db_manager.session_factory() as session:
-            from pyFileIndexer.models import FileMeta
+            from models import FileMeta
 
             files = session.query(FileMeta).filter_by(machine=machine_name).all()
             return [f.path for f in files]
@@ -220,7 +220,7 @@ class DatabaseInspector:
     def get_files_by_operation(self, operation: str) -> List[str]:
         """获取指定操作类型的文件列表"""
         with self.db_manager.session_factory() as session:
-            from pyFileIndexer.models import FileMeta
+            from models import FileMeta
 
             files = session.query(FileMeta).filter_by(operation=operation).all()
             return [f.path for f in files]

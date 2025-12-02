@@ -9,10 +9,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from pyFileIndexer.base import Base
-from pyFileIndexer.database import DatabaseManager
-from pyFileIndexer.db_merge import merge_databases
-from pyFileIndexer.models import FileHash, FileMeta
+from base import Base
+from database import DatabaseManager
+from db_merge import merge_databases
+from models import FileHash, FileMeta
 
 
 @pytest.fixture
