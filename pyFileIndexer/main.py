@@ -195,17 +195,6 @@ def scan_file(file: Path):
         # 检查文件是否已存在（优化：一次查询获取文件和哈希信息）
         result = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
         if result:
-            meta_in_db, hash_in_db = result
-            if hash_in_db and file_stat.st_size == getattr(hash_in_db, "size", None):
-                # 如果文件的创建时间和修改时间没有变化
-                if getattr(meta, "created", None) == getattr(
-                    meta_in_db, "created", None
-                ) and getattr(meta, "modified", None) == getattr(
-                    meta_in_db, "modified", None
-                ):
-                    logger.info(f"Skipping: {file}")
-                    return
-            # 文件有变化，标记为修改
             meta.operation = "MOD"  # type: ignore[attr-defined]
 
         # 获取文件哈希
@@ -318,6 +307,8 @@ def scan_file_worker(
 
 def should_skip_directory(path: Path) -> bool:
     """检查目录是否应该跳过。"""
+    if not cached_config.skip_rules_enabled:
+        return False
     if path.name in ignore_dirs:
         return True
     if path.name.startswith("."):

@@ -19,7 +19,7 @@ pyFileIndexer 是一个高效的文件索引和去重工具，通过计算文件
 ```bash
 # 扫描当前目录
 docker run --rm -v $(pwd):$(pwd) \
-  ghcr.io/suyiiyii/pyfileindexer:latest \
+  ghcr.io/suyiiyii/pyfileindexer:main \
   scan $(pwd) \
   --machine-name "MyDevice" \
   --db-path $(pwd)/indexer.db \
@@ -84,6 +84,11 @@ uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output
 - `--output`: 输出合并后的数据库路径（默认：merged.db）
 - `--log-path`: 日志文件保存路径（默认：indexer.log）
 
+
+**Web 模式专用参数：**
+- `--port`: Web 服务器端口（默认：8000）
+- `--host`: Web 服务器主机地址（默认：0.0.0.0）
+
 ## 使用场景
 
 ### 1. 查找重复文件
@@ -144,15 +149,21 @@ graph TD
 
 ## 配置忽略规则
 
-在项目根目录创建 `.ignore` 文件，配置需要跳过的目录：
+默认不启用任何跳过逻辑。若需要启用忽略规则，在工作目录创建 `settings.toml` 并开启：
 
-```bash
-# 不包含 / 的行：精确匹配目录名
+```
+ENABLE_IGNORE_RULES = true
+```
+
+随后在项目根目录创建 `.ignore` 文件，支持按目录名或路径子串配置：
+
+```
+# 目录名精确匹配
 node_modules
 .git
 __pycache__
 
-# 包含 / 的行：匹配路径中包含该字符串的目录
+# 路径包含匹配
 /temp/
 /cache/
 ```

@@ -64,3 +64,16 @@ class SearchFiltersRequest(BaseModel):
     min_size: Optional[int] = None
     max_size: Optional[int] = None
     hash_value: Optional[str] = None
+
+
+class TreeFileInfo(BaseModel):
+    name: str
+    size: int
+    modified: datetime
+    hash: Optional[FileHashResponse] = None
+
+
+class TreeDataResponse(BaseModel):
+    current_path: str
+    directories: List[str]
+    files: List[TreeFileInfo]

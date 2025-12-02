@@ -38,11 +38,12 @@ class CachedConfig:
             self._scanned: datetime.datetime = self._parse_scanned_time()
             self._scan_archives: bool = getattr(settings, "SCAN_ARCHIVES", True)
             self._max_archive_size: int = getattr(
-                settings, "MAX_ARCHIVE_SIZE", 500 * 1024 * 1024
+                settings, "MAX_ARCHIVE_SIZE", 9223372036854775807
             )
             self._max_archive_file_size: int = getattr(
-                settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024
+                settings, "MAX_ARCHIVE_FILE_SIZE", 9223372036854775807
             )
+            self._skip_rules_enabled: bool = getattr(settings, "ENABLE_IGNORE_RULES", False)
 
             # 标记已初始化
             self._initialized = True
@@ -86,6 +87,10 @@ class CachedConfig:
         """压缩包内文件最大大小"""
         return self._max_archive_file_size
 
+    @property
+    def skip_rules_enabled(self) -> bool:
+        return self._skip_rules_enabled
+
     def update_machine_name(self, machine_name: str) -> None:
         """更新机器名称（支持命令行参数覆盖）"""
         self._machine_name = machine_name
@@ -101,11 +106,12 @@ class CachedConfig:
             self._scanned = self._parse_scanned_time()
             self._scan_archives = getattr(settings, "SCAN_ARCHIVES", True)
             self._max_archive_size = getattr(
-                settings, "MAX_ARCHIVE_SIZE", 500 * 1024 * 1024
+                settings, "MAX_ARCHIVE_SIZE", 9223372036854775807
             )
             self._max_archive_file_size = getattr(
-                settings, "MAX_ARCHIVE_FILE_SIZE", 100 * 1024 * 1024
+                settings, "MAX_ARCHIVE_FILE_SIZE", 9223372036854775807
             )
+            self._skip_rules_enabled = getattr(settings, "ENABLE_IGNORE_RULES", False)
 
 
 # 创建全局单例实例

@@ -60,3 +60,16 @@ export interface SearchFilters {
   max_size?: number;
   hash_value?: string;
 }
+
+export interface TreeFileInfo {
+  name: string;
+  size: number;
+  modified: string;
+  hash?: FileHash;
+}
+
+export interface TreeData {
+  current_path: string;
+  directories: string[];
+  files: TreeFileInfo[];
+}

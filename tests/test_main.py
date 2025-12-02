@@ -321,25 +321,25 @@ class TestFileScanningLogic:
         small_file = test_files["small"]
 
         with patch("main.db_manager", memory_db_manager):
-            # 首次扫描
             scan_file(small_file)
-            # 刷新批量处理器
             from main import batch_processor
-
             batch_processor.flush()
 
-            # 获取文件信息
             file_meta = memory_db_manager.get_file_by_path(str(small_file.absolute()))
-            hash_info = memory_db_manager.get_hash_by_id(file_meta.hash_id)
-
-            # 模拟文件未修改的情况
             with patch("main.get_metadata") as mock_get_metadata:
                 mock_get_metadata.return_value = file_meta
+                scan_file(small_file)
+                batch_processor.flush()
 
-                # 再次扫描（应该跳过）
-                with patch("main.logger") as mock_logger:
-                    scan_file(small_file)
-                    mock_logger.info.assert_called_with(f"Skipping: {small_file}")
+            with memory_db_manager.session_factory() as session:
+                from models import FileMeta
+                file = (
+                    session.query(FileMeta)
+                    .filter_by(path=str(small_file.absolute()))
+                    .first()
+                )
+                assert file is not None
+                assert file.operation == "MOD"
 
     @pytest.mark.unit
     @pytest.mark.database
