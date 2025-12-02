@@ -5,7 +5,7 @@ from typing import Any, Optional
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, tuple_, text, func, inspect as sa_inspect
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
@@ -67,26 +67,46 @@ class DatabaseManager:
 
             self.engine: Optional[Engine] = None
             self.Session = None
-            self.session_lock = threading.Lock()
             self._initialized = True
 
     def init(self, db_url: str):
         """初始化数据库连接，支持多线程安全。"""
         if db_url.startswith("sqlite"):
             # SQLite 配置，支持多线程，优化磁盘数据库性能
-            self.engine = create_engine(
-                db_url,
-                connect_args={
+            engine_kwargs = {
+                "connect_args": {
                     "check_same_thread": False,  # 允许跨线程使用
                     "timeout": 60,  # 设置超时(增加到60秒以应对高并发场景)
                 },
-                echo=False,
-            )
+                "echo": False,
+            }
+
+            # 内存数据库不支持连接池参数
+            if db_url != "sqlite:///:memory:":
+                engine_kwargs.update(
+                    {
+                        "pool_size": 20,  # 连接池大小
+                        "max_overflow": 40,  # 最大溢出连接数
+                        "pool_pre_ping": True,  # 连接健康检查
+                        "pool_recycle": 3600,  # 连接回收时间（1小时）
+                    }
+                )
+
+            self.engine = create_engine(db_url, **engine_kwargs)
         else:
             # 其他数据库的标准配置
-            self.engine = create_engine(db_url)
+            self.engine = create_engine(
+                db_url,
+                pool_size=20,
+                max_overflow=40,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+            )
 
-        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        # 使用 scoped_session 自动为每个线程创建独立会话
+        session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.Session = scoped_session(session_factory)
+
         Base.metadata.create_all(self.engine)
 
         # 启用 WAL 模式以支持并发读写 (仅 SQLite)
@@ -147,7 +167,7 @@ class DatabaseManager:
 
     @contextmanager
     def session_scope(self):
-        """提供事务作用域的会话管理。"""
+        """提供事务作用域的会话管理（支持 scoped_session）。"""
         if self.Session is None:
             raise RuntimeError("Database is not initialized.")
 
@@ -159,10 +179,15 @@ class DatabaseManager:
             session.rollback()
             raise
         finally:
-            session.close()
+            self.Session.remove()  # 清理线程本地会话
 
     def session_factory(self):
-        """会话工厂方法 - 保持向后兼容"""
+        """
+        会话工厂方法 - 为了向后兼容保留
+
+        注意：建议使用 session_scope() 上下文管理器代替此方法
+        使用此方法时需要手动关闭会话
+        """
         if self.Session is None:
             raise RuntimeError("Database is not initialized.")
         return self.Session()
@@ -170,36 +195,27 @@ class DatabaseManager:
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_by_name(self, name: str) -> Optional[FileMeta]:
         """根据文件名查询文件信息。"""
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             result = session.query(FileMeta).filter_by(name=name).first()
             if result:
-                session.refresh(result)  # 刷新对象状态
                 session.expunge(result)  # 从会话中分离，使其可以在会话外使用
             return result
-        finally:
-            session.close()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_by_path(self, path: str) -> Optional[FileMeta]:
         """根据文件路径查询文件信息。"""
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             result = session.query(FileMeta).filter_by(path=path).first()
             if result:
-                session.refresh(result)  # 刷新对象状态
                 session.expunge(result)
             return result
-        finally:
-            session.close()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_with_hash_by_path(
         self, path: str
     ) -> Optional[tuple[FileMeta, Optional[FileHash]]]:
         """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             result = (
                 session.query(FileMeta, FileHash)
                 .outerjoin(FileHash, FileMeta.hash_id == FileHash.id)
@@ -215,8 +231,6 @@ class DatabaseManager:
                     session.expunge(file_hash)
                 return (file_meta, file_hash)
             return None
-        finally:
-            session.close()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_files_with_hash_by_paths_batch(
@@ -226,8 +240,7 @@ class DatabaseManager:
         if not paths:
             return {}
 
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             results = (
                 session.query(FileMeta, FileHash)
                 .outerjoin(FileHash, FileMeta.hash_id == FileHash.id)
@@ -244,34 +257,24 @@ class DatabaseManager:
                 result_dict[file_meta.path] = (file_meta, file_hash)  # type: ignore
 
             return result_dict
-        finally:
-            session.close()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_hash_by_id(self, hash_id: int) -> Optional[FileHash]:
         """根据哈希 ID 查询哈希信息。"""
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             result = session.query(FileHash).filter_by(id=hash_id).first()
             if result:
-                session.refresh(result)  # 刷新对象状态
                 session.expunge(result)  # 分离对象
             return result
-        finally:
-            session.close()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_hash_by_hash(self, hash: dict[str, str]) -> Optional[FileHash]:
         """根据哈希查询哈希信息。"""
-        session = self.session_factory()
-        try:
+        with self.session_scope() as session:
             result = session.query(FileHash).filter_by(**hash).first()
             if result:
-                session.refresh(result)  # 刷新对象状态
                 session.expunge(result)
             return result
-        finally:
-            session.close()
 
     def add_file(self, file: FileMeta) -> Any:
         """添加文件信息。"""
@@ -636,18 +639,32 @@ class DatabaseManager:
                 file_hash = item["file_hash"]
                 operation = item["operation"]
 
+                # 立即提取所有需要的属性值，避免后续会话访问问题
                 hash_dict = {
-                    "md5": file_hash.md5,
-                    "sha1": file_hash.sha1,
-                    "sha256": file_hash.sha256,
-                    "size": file_hash.size,
+                    "md5": getattr(file_hash, "md5", None),
+                    "sha1": getattr(file_hash, "sha1", None),
+                    "sha256": getattr(file_hash, "sha256", None),
+                    "size": getattr(file_hash, "size", 0),
                 }
                 hash_data.append(hash_dict)
 
+                # 提取 FileMeta 的所有属性值
+                meta_dict = {
+                    "name": getattr(file_meta, "name", ""),
+                    "path": getattr(file_meta, "path", ""),
+                    "machine": getattr(file_meta, "machine", ""),
+                    "created": getattr(file_meta, "created", None),
+                    "modified": getattr(file_meta, "modified", None),
+                    "scanned": getattr(file_meta, "scanned", None),
+                    "operation": getattr(file_meta, "operation", "ADD"),
+                    "is_archived": getattr(file_meta, "is_archived", 0),
+                    "archive_path": getattr(file_meta, "archive_path", None),
+                }
+
                 if operation == "ADD":
-                    new_files.append((file_meta, file_hash, hash_dict))
+                    new_files.append((meta_dict, hash_dict))
                 else:  # MOD
-                    update_files.append((file_meta, file_hash, hash_dict))
+                    update_files.append((meta_dict, hash_dict))
 
             # 2. 批量查询已存在的哈希
             existing_hashes = self.get_existing_hashes_batch(hash_data)
@@ -687,58 +704,56 @@ class DatabaseManager:
             files_to_insert = []
 
             # 处理新文件
-            for file_meta, file_hash, hash_dict in new_files:
+            for meta_dict, hash_dict in new_files:
                 hash_key = (hash_dict["md5"], hash_dict["sha1"], hash_dict["sha256"])
                 hash_id = existing_hashes[hash_key]
 
                 file_dict = {
-                    "name": file_meta.name,
-                    "path": file_meta.path,
-                    "machine": file_meta.machine,
-                    "created": file_meta.created,
-                    "modified": file_meta.modified,
-                    "scanned": file_meta.scanned,
-                    "operation": file_meta.operation,
+                    "name": meta_dict["name"],
+                    "path": meta_dict["path"],
+                    "machine": meta_dict["machine"],
+                    "created": meta_dict["created"],
+                    "modified": meta_dict["modified"],
+                    "scanned": meta_dict["scanned"],
+                    "operation": meta_dict["operation"],
                     "hash_id": hash_id,
-                    "is_archived": getattr(file_meta, "is_archived", 0),
-                    "archive_path": getattr(file_meta, "archive_path", None),
+                    "is_archived": meta_dict["is_archived"],
+                    "archive_path": meta_dict["archive_path"],
                 }
                 files_to_insert.append(file_dict)
 
             # 处理更新文件
-            for file_meta, file_hash, hash_dict in update_files:
+            for meta_dict, hash_dict in update_files:
                 hash_key = (hash_dict["md5"], hash_dict["sha1"], hash_dict["sha256"])
                 hash_id = existing_hashes[hash_key]
 
                 # 查找现有文件记录
                 existing_file = (
-                    session.query(FileMeta).filter_by(path=file_meta.path).first()
+                    session.query(FileMeta).filter_by(path=meta_dict["path"]).first()
                 )
                 if existing_file:
-                    existing_file.name = file_meta.name  # type: ignore
-                    existing_file.created = file_meta.created  # type: ignore
-                    existing_file.modified = file_meta.modified  # type: ignore
-                    existing_file.scanned = file_meta.scanned  # type: ignore
-                    existing_file.operation = file_meta.operation  # type: ignore
-                    existing_file.machine = file_meta.machine  # type: ignore
+                    existing_file.name = meta_dict["name"]  # type: ignore
+                    existing_file.created = meta_dict["created"]  # type: ignore
+                    existing_file.modified = meta_dict["modified"]  # type: ignore
+                    existing_file.scanned = meta_dict["scanned"]  # type: ignore
+                    existing_file.operation = meta_dict["operation"]  # type: ignore
+                    existing_file.machine = meta_dict["machine"]  # type: ignore
                     existing_file.hash_id = hash_id  # type: ignore
-                    existing_file.is_archived = getattr(file_meta, "is_archived", 0)  # type: ignore
-                    existing_file.archive_path = getattr(
-                        file_meta, "archive_path", None
-                    )  # type: ignore
+                    existing_file.is_archived = meta_dict["is_archived"]  # type: ignore
+                    existing_file.archive_path = meta_dict["archive_path"]  # type: ignore
                 else:
                     # 如果文件不存在，添加为新文件
                     file_dict = {
-                        "name": file_meta.name,
-                        "path": file_meta.path,
-                        "machine": file_meta.machine,
-                        "created": file_meta.created,
-                        "modified": file_meta.modified,
-                        "scanned": file_meta.scanned,
-                        "operation": file_meta.operation,
+                        "name": meta_dict["name"],
+                        "path": meta_dict["path"],
+                        "machine": meta_dict["machine"],
+                        "created": meta_dict["created"],
+                        "modified": meta_dict["modified"],
+                        "scanned": meta_dict["scanned"],
+                        "operation": meta_dict["operation"],
                         "hash_id": hash_id,
-                        "is_archived": getattr(file_meta, "is_archived", 0),
-                        "archive_path": getattr(file_meta, "archive_path", None),
+                        "is_archived": meta_dict["is_archived"],
+                        "archive_path": meta_dict["archive_path"],
                     }
                     files_to_insert.append(file_dict)
 

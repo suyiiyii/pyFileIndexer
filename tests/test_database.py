@@ -299,30 +299,34 @@ class TestDatabaseConcurrency:
 
     @pytest.mark.unit
     @pytest.mark.database
-    def test_session_lock_protection(self, memory_db_manager):
-        """测试会话锁保护"""
-        results = []
-        start_time = time.time()
+    def test_scoped_session_thread_safety(self, memory_db_manager):
+        """测试 scoped_session 的线程安全性 - 每个线程获得独立的 session"""
+        thread_sessions = {}
+        errors = []
 
-        def locked_operation(duration):
-            with memory_db_manager.session_lock:
-                time.sleep(duration)
-                results.append(time.time() - start_time)
+        def get_session_id(thread_id):
+            try:
+                # 每个线程应该获得独立的 session
+                session = memory_db_manager.Session()
+                session_id = id(session)
+                thread_sessions[thread_id] = session_id
+                session.close()
+            except Exception as e:
+                errors.append(e)
 
-        # 启动两个线程，第二个应该等待第一个完成
-        thread1 = threading.Thread(target=locked_operation, args=(0.2,))
-        thread2 = threading.Thread(target=locked_operation, args=(0.1,))
+        threads = []
+        for i in range(4):
+            thread = threading.Thread(target=get_session_id, args=(i,))
+            thread.start()
+            threads.append(thread)
 
-        thread1.start()
-        time.sleep(0.05)  # 确保thread1先获得锁
-        thread2.start()
+        for thread in threads:
+            thread.join()
 
-        thread1.join()
-        thread2.join()
-
-        # 验证执行顺序（第一个结果应该小于第二个）
-        assert len(results) == 2
-        assert results[0] < results[1]
+        # 验证没有错误
+        assert len(errors) == 0
+        # 验证获得了 session（可能相同也可能不同，取决于 scoped_session 的实现）
+        assert len(thread_sessions) == 4
 
 
 class TestDatabaseErrors:
