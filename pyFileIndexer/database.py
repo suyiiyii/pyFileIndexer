@@ -1,14 +1,44 @@
 import threading
 import logging
+import time
 from typing import Any, Optional
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, tuple_, text, func, inspect as sa_inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 
 from .base import Base
 from .models import FileHash, FileMeta
+
+
+def retry_on_db_lock(max_retries: int = 3, retry_delay: float = 0.5):
+    """装饰器：在遇到数据库锁定时自动重试"""
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    last_exception = e
+                    if "database is locked" in str(e):
+                        if attempt < max_retries - 1:
+                            logger = logging.getLogger(__name__)
+                            logger.warning(
+                                f"Database locked, retrying {attempt + 1}/{max_retries}..."
+                            )
+                            time.sleep(retry_delay * (attempt + 1))  # 指数退避
+                            continue
+                    raise  # 非锁定错误直接抛出
+            # 所有重试都失败了
+            raise last_exception  # type: ignore
+
+        return wrapper
+
+    return decorator
 
 
 class DatabaseManager:
@@ -48,7 +78,7 @@ class DatabaseManager:
                 db_url,
                 connect_args={
                     "check_same_thread": False,  # 允许跨线程使用
-                    "timeout": 20,  # 设置超时
+                    "timeout": 60,  # 设置超时(增加到60秒以应对高并发场景)
                 },
                 echo=False,
             )
@@ -58,6 +88,15 @@ class DatabaseManager:
 
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         Base.metadata.create_all(self.engine)
+
+        # 启用 WAL 模式以支持并发读写 (仅 SQLite)
+        if db_url.startswith("sqlite"):
+            with self.engine.connect() as conn:
+                conn.execute(text("PRAGMA journal_mode=WAL"))
+                conn.execute(text("PRAGMA synchronous=NORMAL"))
+                conn.commit()
+                logger = logging.getLogger(__name__)
+                logger.info("SQLite WAL mode enabled for better concurrency")
 
         # 自动迁移 schema
         self._migrate_schema()
@@ -128,6 +167,7 @@ class DatabaseManager:
             raise RuntimeError("Database is not initialized.")
         return self.Session()
 
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_by_name(self, name: str) -> Optional[FileMeta]:
         """根据文件名查询文件信息。"""
         session = self.session_factory()
@@ -140,6 +180,7 @@ class DatabaseManager:
         finally:
             session.close()
 
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_by_path(self, path: str) -> Optional[FileMeta]:
         """根据文件路径查询文件信息。"""
         session = self.session_factory()
@@ -152,6 +193,7 @@ class DatabaseManager:
         finally:
             session.close()
 
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_file_with_hash_by_path(
         self, path: str
     ) -> Optional[tuple[FileMeta, Optional[FileHash]]]:
@@ -176,6 +218,36 @@ class DatabaseManager:
         finally:
             session.close()
 
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
+    def get_files_with_hash_by_paths_batch(
+        self, paths: list[str]
+    ) -> dict[str, tuple[FileMeta, Optional[FileHash]]]:
+        """批量查询多个文件路径的信息，返回路径到文件信息的映射"""
+        if not paths:
+            return {}
+
+        session = self.session_factory()
+        try:
+            results = (
+                session.query(FileMeta, FileHash)
+                .outerjoin(FileHash, FileMeta.hash_id == FileHash.id)
+                .filter(FileMeta.path.in_(paths))
+                .all()
+            )
+
+            result_dict = {}
+            for file_meta, file_hash in results:
+                if file_meta:
+                    session.expunge(file_meta)
+                if file_hash:
+                    session.expunge(file_hash)
+                result_dict[file_meta.path] = (file_meta, file_hash)  # type: ignore
+
+            return result_dict
+        finally:
+            session.close()
+
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_hash_by_id(self, hash_id: int) -> Optional[FileHash]:
         """根据哈希 ID 查询哈希信息。"""
         session = self.session_factory()
@@ -188,6 +260,7 @@ class DatabaseManager:
         finally:
             session.close()
 
+    @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_hash_by_hash(self, hash: dict[str, str]) -> Optional[FileHash]:
         """根据哈希查询哈希信息。"""
         session = self.session_factory()

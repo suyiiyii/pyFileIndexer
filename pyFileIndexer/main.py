@@ -268,16 +268,26 @@ def scan_archive_file(archive_path: Path):
         machine = cached_config.machine_name
         scanned = cached_config.scanned
 
+        # 第一步：收集所有条目和虚拟路径
+        entries_data = []
+        virtual_paths = []
         for entry in scanner.scan_entries():
-            try:
-                # 检查虚拟路径是否已存在
-                virtual_path = scanner.create_virtual_path(entry.name)
-                existing_result = db_manager.get_file_with_hash_by_path(virtual_path)
+            virtual_path = scanner.create_virtual_path(entry.name)
+            entries_data.append((entry, virtual_path))
+            virtual_paths.append(virtual_path)
 
+        # 第二步：批量查询所有虚拟路径是否已存在（减少数据库查询次数）
+        existing_files = db_manager.get_files_with_hash_by_paths_batch(virtual_paths)
+
+        # 第三步：处理每个条目
+        for entry, virtual_path in entries_data:
+            try:
                 # 创建文件元数据
                 file_meta = scanner.create_file_meta(entry, machine, scanned)
                 file_meta.operation = "ADD"  # type: ignore[attr-defined]
 
+                # 检查是否已存在（从批量查询结果中获取）
+                existing_result = existing_files.get(virtual_path)
                 if existing_result:
                     # 文件已存在，检查是否需要更新
                     existing_meta, existing_hash = existing_result
