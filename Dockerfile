@@ -58,7 +58,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# 启动命令
-ENTRYPOINT ["uv", "run", "python", "pyFileIndexer/main.py"]
+# 启动命令 - 使用新的包方式
+ENTRYPOINT ["uv", "run", "python", "-m", "pyFileIndexer"]
 CMD ["--help"]
 
