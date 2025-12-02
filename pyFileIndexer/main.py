@@ -16,12 +16,14 @@ from archive_scanner import (
     calculate_hash_from_data,
     create_archive_scanner,
     is_archive_file,
+    get_archive_type,
 )
 from cached_config import cached_config
 from config import settings
 from database import db_manager
 from models import FileHash, FileMeta
 from tqdm import tqdm
+from metrics import metrics
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -162,11 +164,22 @@ class BatchProcessor:
             return
 
         try:
+            t0 = time.time()
+            count = len(self.batch_data)
             db_manager.add_files_batch(self.batch_data.copy())
             logger.info(f"批量处理了 {len(self.batch_data)} 个文件")
             self.batch_data.clear()
+            try:
+                metrics.inc_db_writes(count)
+                metrics.observe_db_flush(time.time() - t0, count)
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"批量处理失败: {e}")
+            try:
+                metrics.inc_errors("db_flush")
+            except Exception:
+                pass
             raise
 
     def flush(self):
@@ -204,17 +217,30 @@ def scan_file(file: Path):
 
         # 添加到批量处理队列
         batch_processor.add_file(meta, file_hash, meta.operation)
+        try:
+            metrics.inc_bytes(file_stat.st_size)
+        except Exception:
+            pass
 
         # 如果启用了压缩包扫描并且是压缩包文件，扫描内部文件
         if cached_config.scan_archives and is_archive_file(file):
             scan_archive_file(file)
     except Exception as e:
         logger.error(f"Failed to scan file {file}: {type(e).__name__}: {e}")
+        try:
+            metrics.inc_errors("scan_file")
+        except Exception:
+            pass
 
 
 def scan_archive_file(archive_path: Path):
     """扫描压缩包内的文件"""
     logger.info(f"Scanning archive: {archive_path}")
+    try:
+        archive_type = get_archive_type(archive_path) or "unknown"
+        metrics.inc_archives(archive_type)
+    except Exception:
+        archive_type = "unknown"
 
     # 检查压缩包大小限制
     max_size = cached_config.max_archive_size
@@ -222,12 +248,20 @@ def scan_archive_file(archive_path: Path):
         logger.warning(
             f"Skipping large archive: {archive_path} ({archive_path.stat().st_size} bytes)"
         )
+        try:
+            metrics.inc_errors("archive_skip")
+        except Exception:
+            pass
         return
 
     max_archive_file_size = cached_config.max_archive_file_size
     scanner = create_archive_scanner(archive_path, max_archive_file_size)
     if not scanner:
         logger.warning(f"Cannot create scanner for archive: {archive_path}")
+        try:
+            metrics.inc_errors("archive_skip")
+        except Exception:
+            pass
         return
 
     try:
@@ -268,9 +302,18 @@ def scan_archive_file(archive_path: Path):
                     # 添加到批量处理队列
                     batch_processor.add_file(file_meta, file_hash, file_meta.operation)
                     logger.debug(f"Added archived file: {virtual_path}")
+                    try:
+                        metrics.inc_archive_entries(archive_type)
+                        metrics.inc_bytes(entry.size)
+                    except Exception:
+                        pass
 
                 except Exception as e:
                     logger.error(f"Error processing archived file {entry.name}: {e}")
+                    try:
+                        metrics.inc_errors("archive_read")
+                    except Exception:
+                        pass
                     continue
 
             except Exception as e:
@@ -279,6 +322,10 @@ def scan_archive_file(archive_path: Path):
 
     except Exception as e:
         logger.error(f"Error scanning archive {archive_path}: {e}")
+        try:
+            metrics.inc_errors("scan_archive")
+        except Exception:
+            pass
 
 
 def scan_file_worker(
@@ -294,11 +341,21 @@ def scan_file_worker(
                 break
             current_file = file
             logger.debug(f"Scanning: {file}")
+            t0 = time.time()
             scan_file(file)
+            try:
+                metrics.inc_files()
+                metrics.observe_file_duration(time.time() - t0)
+            except Exception:
+                pass
             if pbar:
                 pbar.update(1)
         except Exception as e:
             logger.exception(f"Unexpected error in worker thread while processing {current_file}: {type(e).__name__}: {e}")
+            try:
+                metrics.inc_errors("worker")
+            except Exception:
+                pass
             if pbar:
                 pbar.update(1)
         finally:
@@ -330,6 +387,7 @@ def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: 
         return
 
     logger.debug(f"正在扫描目录: {directory}")
+    metrics.inc_dirs()
 
     try:
         for path in directory.iterdir():
@@ -358,8 +416,11 @@ def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: 
 
 def scan(path: Union[str, Path]):
     """扫描指定目录（使用BFS队列方式，避免递归死锁）。"""
+    start_ts = time.time()
+    metrics.set_scan_in_progress(1)
     if not os.path.exists(path):
         logger.error(f"Path not exists: {path}")
+        metrics.set_scan_in_progress(0)
         return
     if isinstance(path, str):
         path = Path(path)
@@ -396,6 +457,11 @@ def scan(path: Union[str, Path]):
             time.sleep(3)
             try:
                 pbar.refresh()
+                try:
+                    metrics.set_queue_size(file_queue.qsize())
+                    metrics.set_workers(sum(1 for w in workers if w.is_alive()))
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -463,6 +529,11 @@ def scan(path: Union[str, Path]):
     # 刷新剩余的批量数据
     batch_processor.flush()
     logger.info("文件扫描结束。")
+    metrics.set_scan_in_progress(0)
+    try:
+        metrics.observe_scan_duration(time.time() - start_ts)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
@@ -491,6 +562,26 @@ if __name__ == "__main__":
         dest="log_path",
         help="The log path (default: indexer.log)",
         default="indexer.log",
+    )
+    scan_parser.add_argument(
+        "--metrics-port",
+        type=int,
+        dest="metrics_port",
+        help="Prometheus metrics port (0 to auto-select)",
+        default=0,
+    )
+    scan_parser.add_argument(
+        "--metrics-host",
+        type=str,
+        dest="metrics_host",
+        help="Prometheus metrics host",
+        default="0.0.0.0",
+    )
+    scan_parser.add_argument(
+        "--disable-metrics",
+        action="store_true",
+        help="Disable metrics server",
+        default=False,
     )
 
     # Serve 子命令
@@ -557,6 +648,28 @@ if __name__ == "__main__":
         if args.machine_name:
             setattr(settings, "MACHINE_NAME", args.machine_name)
             cached_config.update_machine_name(args.machine_name)
+
+        metrics.init(cached_config.machine_name)
+        if not getattr(args, "disable_metrics", False):
+            try:
+                if not metrics.enabled():
+                    logger.info("Prometheus client not installed, metrics disabled")
+                else:
+                    start_port = args.metrics_port if args.metrics_port and args.metrics_port > 0 else 9000
+                    max_port = start_port + 100
+                    started = False
+                    for port in range(start_port, max_port + 1):
+                        try:
+                            metrics.start_http_server(port, args.metrics_host)
+                            logger.info(f"Metrics listening on {args.metrics_host}:{port}")
+                            started = True
+                            break
+                        except Exception:
+                            continue
+                    if not started:
+                        logger.warning("Metrics server start failed on all candidate ports")
+            except Exception as e:
+                logger.warning(f"Metrics server start failed: {e}")
 
         # 注册信号处理器
         signal.signal(signal.SIGINT, signal_handler)

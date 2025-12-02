@@ -26,6 +26,58 @@ docker run --rm -v $(pwd):$(pwd) \
   --log-path $(pwd)/indexer.log
 ```
 
+#### 在 Docker 中启用 Metrics 端点
+
+- 固定端口（推荐）：明确设置容器监听端口并做端口映射
+
+```bash
+# 在容器内监听 9090，并映射到宿主机 9090
+docker run --rm \
+  -p 9090:9090 \
+  -v $(pwd):$(pwd) \
+  ghcr.io/suyiiyii/pyfileindexer:main \
+  scan $(pwd) \
+  --machine-name "MyDevice" \
+  --db-path $(pwd)/indexer.db \
+  --log-path $(pwd)/indexer.log \
+  --metrics-host 0.0.0.0 \
+  --metrics-port 9090
+
+# 访问指标
+curl http://127.0.0.1:9090/metrics
+```
+
+- 自动选择端口（容器内从 9000 开始递增）
+  - 方式一：映射端口范围（例如 9000–9100），容器选中的端口将被暴露到宿主机
+  - 方式二：使用 host 网络（容器与宿主机共享网络命名空间）
+
+```bash
+# 方式一：映射端口范围
+docker run --rm \
+  -p 9000-9100:9000-9100 \
+  -v $(pwd):$(pwd) \
+  ghcr.io/suyiiyii/pyfileindexer:main \
+  scan $(pwd) \
+  --machine-name "MyDevice" \
+  --db-path $(pwd)/indexer.db \
+  --log-path $(pwd)/indexer.log \
+  --metrics-host 0.0.0.0 \
+  --metrics-port 0
+
+# 查看容器日志，确认实际绑定端口（示例：Metrics listening on 0.0.0.0:9003）
+
+# 方式二：使用宿主网络（不适用于所有环境）
+docker run --rm \
+  --network host \
+  -v $(pwd):$(pwd) \
+  ghcr.io/suyiiyii/pyfileindexer:main \
+  scan $(pwd) \
+  --machine-name "MyDevice" \
+  --db-path $(pwd)/indexer.db \
+  --log-path $(pwd)/indexer.log \
+  --metrics-host 127.0.0.1 \
+  --metrics-port 0
+
 ### 本地运行
 
 ```bash
