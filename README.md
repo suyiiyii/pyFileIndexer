@@ -4,6 +4,25 @@
 
 pyFileIndexer 是一个高效的文件索引和去重工具，通过计算文件哈希值（MD5、SHA1、SHA256）建立文件指纹数据库，帮助您管理分散在不同存储设备（本地、U盘、NAS、云盘）上的文件，快速查找重复文件并追踪文件分布。
 
+项目现在采用标准的 Python 包结构，支持多种安装和使用方式，具备良好的可维护性和扩展性。
+
+### 🆕 新版本更新说明
+
+**重要变更**：为了符合 Python 包最佳实践，项目导入结构已重构：
+
+- ✅ 新增多种运行方式（包方式、控制台脚本、根目录入口）
+- ✅ 标准化的 Python 包结构，支持 `pip install`
+- ⚠️ 旧的使用方式 `uv run python pyFileIndexer/main.py` 不再支持
+
+**推荐迁移**：
+```bash
+# 旧方式（不再支持）
+uv run python pyFileIndexer/main.py scan /path
+
+# 新方式（推荐）
+uv run pyfileindexer scan /path
+```
+
 ## 核心功能
 
 - ✅ **文件指纹建档**：为每个文件计算三种哈希值，建立唯一标识
@@ -85,10 +104,53 @@ docker run --rm \
 uv sync
 
 # 扫描指定目录
-uv run python pyFileIndexer/main.py scan /path/to/scan \
+uv run pyfileindexer scan /path/to/scan \
   --machine-name "MyLaptop" \
   --db-path ./files.db \
   --log-path ./scan.log
+```
+
+### 使用方式
+
+pyFileIndexer 现在支持多种运行方式，推荐使用包方式或控制台脚本方式：
+
+#### 1. 包方式（推荐）
+
+```bash
+# 扫描目录
+uv run python -m pyFileIndexer scan <path> [选项]
+
+# 启动 Web 服务
+uv run python -m pyFileIndexer serve [选项]
+
+# 合并数据库
+uv run python -m pyFileIndexer merge [选项]
+```
+
+#### 2. 控制台脚本方式（最便捷）
+
+```bash
+# 扫描目录
+uv run pyfileindexer scan <path> [选项]
+
+# 启动 Web 服务
+uv run pyfileindexer serve [选项]
+
+# 合并数据库
+uv run pyfileindexer merge [选项]
+```
+
+#### 3. 根目录入口方式
+
+```bash
+# 扫描目录
+uv run python main.py scan <path> [选项]
+
+# 启动 Web 服务
+uv run python main.py serve [选项]
+
+# 合并数据库
+uv run python main.py merge [选项]
 ```
 
 ### 命令说明
@@ -100,7 +162,7 @@ pyFileIndexer 使用子命令方式运行，支持三种模式：
 扫描指定目录，建立文件索引：
 
 ```bash
-uv run python pyFileIndexer/main.py scan <path> [选项]
+uv run pyfileindexer scan <path> [选项]
 ```
 
 **参数：**
@@ -108,13 +170,16 @@ uv run python pyFileIndexer/main.py scan <path> [选项]
 - `--machine-name`: 设备标识名称，用于区分不同存储位置
 - `--db-path`: 数据库文件保存路径（默认：indexer.db）
 - `--log-path`: 日志文件保存路径（默认：indexer.log）
+- `--metrics-port`: Prometheus 监控端口（默认：0 自动选择）
+- `--metrics-host`: Prometheus 监听地址（默认：0.0.0.0）
+- `--disable-metrics`: 禁用监控服务
 
 #### 2. Web 服务模式 (serve)
 
 启动 Web 界面，浏览和搜索已索引的文件：
 
 ```bash
-uv run python pyFileIndexer/main.py serve [选项]
+uv run pyfileindexer serve [选项]
 ```
 
 **参数：**
@@ -128,18 +193,13 @@ uv run python pyFileIndexer/main.py serve [选项]
 合并多个数据库文件：
 
 ```bash
-uv run python pyFileIndexer/main.py merge --source db1.db db2.db db3.db --output merged.db
+uv run pyfileindexer merge --source db1.db db2.db db3.db --output merged.db
 ```
 
 **参数：**
 - `--source`: 源数据库文件列表（必需，支持多个）
 - `--output`: 输出合并后的数据库路径（默认：merged.db）
 - `--log-path`: 日志文件保存路径（默认：indexer.log）
-
-
-**Web 模式专用参数：**
-- `--port`: Web 服务器端口（默认：8000）
-- `--host`: Web 服务器主机地址（默认：0.0.0.0）
 
 ## 使用场景
 
@@ -158,17 +218,17 @@ HAVING COUNT(*) > 1;
 扫描不同设备并汇总到一个数据库：
 ```bash
 # 在不同设备上分别扫描
-uv run python pyFileIndexer/main.py scan /Volumes/USB1 --machine-name "USB1" --db-path usb1.db
-uv run python pyFileIndexer/main.py scan /nas/data --machine-name "NAS" --db-path nas.db
-uv run python pyFileIndexer/main.py scan /backup --machine-name "BackupDisk" --db-path backup.db
+uv run pyfileindexer scan /Volumes/USB1 --machine-name "USB1" --db-path usb1.db
+uv run pyfileindexer scan /nas/data --machine-name "NAS" --db-path nas.db
+uv run pyfileindexer scan /backup --machine-name "BackupDisk" --db-path backup.db
 
 # 合并所有数据库
-uv run python pyFileIndexer/main.py merge \
+uv run pyfileindexer merge \
   --source usb1.db nas.db backup.db \
   --output all_devices.db
 
 # 使用合并后的数据库查找跨设备的重复文件
-uv run python pyFileIndexer/main.py serve --db-path all_devices.db
+uv run pyfileindexer serve --db-path all_devices.db
 ```
 
 ### 3. 定期备份扫描
@@ -234,11 +294,13 @@ __pycache__
 
 ```bash
 # 确保已扫描文件并生成数据库
-uv run python pyFileIndexer/main.py scan /path/to/scan --db-path files.db
+uv run pyfileindexer scan /path/to/scan --db-path files.db
 
 # 启动 Web 服务器
-uv run python pyFileIndexer/main.py serve --db-path files.db --port 8000
+uv run pyfileindexer serve --db-path files.db --port 8000
 ```
+
+然后访问 http://localhost:8000 即可使用 Web 界面。
 
 ### 前端构建
 

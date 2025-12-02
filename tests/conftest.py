@@ -4,12 +4,8 @@ from datetime import datetime
 from typing import Generator, Dict, Optional
 import pytest
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
-
-from database import DatabaseManager
-from models import FileHash, FileMeta
+from pyFileIndexer.database import DatabaseManager
+from pyFileIndexer.models import FileHash, FileMeta
 
 
 @pytest.fixture(scope="session")
@@ -499,7 +495,7 @@ def large_archive_test_directory(temp_dir: Path) -> Dict[str, Path]:
 def clear_batch_processor():
     """在每个测试前后清理批量处理器"""
     try:
-        from main import batch_processor
+        from pyFileIndexer.main import batch_processor
 
         batch_processor.clear()
     except ImportError:
@@ -508,7 +504,7 @@ def clear_batch_processor():
     yield  # 运行测试
 
     try:
-        from main import batch_processor
+        from pyFileIndexer.main import batch_processor
 
         batch_processor.clear()
     except ImportError:

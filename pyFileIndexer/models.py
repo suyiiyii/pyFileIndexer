@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from dataclasses import dataclass
 
-from base import Base
+from .base import Base
 
 
 @dataclass

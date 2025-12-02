@@ -1,12 +1,7 @@
 import pytest
 from datetime import datetime
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
-
-from models import FileHash, FileMeta
+from pyFileIndexer.models import FileHash, FileMeta
 
 
 class TestFileHash:

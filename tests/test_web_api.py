@@ -1,15 +1,10 @@
 import pytest
-import sys
-from pathlib import Path
 from datetime import datetime
 from unittest.mock import patch
 
-# 添加路径
-sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
-
 from fastapi.testclient import TestClient
-from web_server import create_app
-from models import FileMeta, FileHash
+from pyFileIndexer.web_server import create_app
+from pyFileIndexer.models import FileMeta, FileHash
 
 
 @pytest.fixture
@@ -63,7 +58,7 @@ class TestWebAPI:
         assert response.status_code == 200
         assert response.json() == {"status": "healthy"}
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_get_files_success(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -90,7 +85,7 @@ class TestWebAPI:
         assert file_data["meta"]["path"] == "/tmp/test_file.txt"
         assert file_data["hash"]["size"] == 1024
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_get_files_with_filters(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -124,7 +119,7 @@ class TestWebAPI:
         assert filters["min_size"] == 100
         assert filters["max_size"] == 2000
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_name(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -142,7 +137,7 @@ class TestWebAPI:
 
         mock_db_manager.search_files.assert_called_once_with("test", "name")
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_path(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -160,7 +155,7 @@ class TestWebAPI:
 
         mock_db_manager.search_files.assert_called_once_with("/tmp", "path")
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_hash(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -195,7 +190,7 @@ class TestWebAPI:
 
         assert response.status_code == 422  # Validation error
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_get_statistics(self, mock_db_manager, client):
         """测试获取统计信息"""
         mock_db_manager.get_statistics.return_value = {
@@ -214,7 +209,7 @@ class TestWebAPI:
         assert data["machine_stats"] == {"machine1": 500, "machine2": 500}
         assert data["duplicate_files"] == 10
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_get_duplicate_files(
         self, mock_db_manager, client, mock_file_meta, mock_file_hash
     ):
@@ -245,7 +240,7 @@ class TestWebAPI:
         assert duplicate_group["hash"] == "d41d8cd98f00b204e9800998ecf8427e"
         assert len(duplicate_group["files"]) == 2
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_api_error_handling(self, mock_db_manager, client):
         """测试API错误处理"""
         mock_db_manager.get_files_paginated.side_effect = Exception("Database error")
@@ -268,7 +263,7 @@ class TestWebAPI:
         response = client.get("/api/files", params={"min_size": -1})
         assert response.status_code == 422
 
-    @patch("web_server.db_manager")
+    @patch("pyFileIndexer.web_server.db_manager")
     def test_empty_results(self, mock_db_manager, client):
         """测试空结果"""
         mock_db_manager.get_files_paginated.return_value = {

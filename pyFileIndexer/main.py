@@ -12,18 +12,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from archive_scanner import (
+from .archive_scanner import (
     calculate_hash_from_data,
     create_archive_scanner,
     is_archive_file,
     get_archive_type,
 )
-from cached_config import cached_config
-from config import settings
-from database import db_manager
-from models import FileHash, FileMeta
+from .cached_config import cached_config
+from .config import settings
+from .database import db_manager
+from .models import FileHash, FileMeta
 from tqdm import tqdm
-from metrics import metrics
+from .metrics import metrics
 
 stop_event = threading.Event()
 logger = logging.getLogger()
@@ -539,7 +539,8 @@ def scan(path: Union[str, Path]):
         pass
 
 
-if __name__ == "__main__":
+def main():
+    """pyFileIndexer 主入口函数"""
     parser = argparse.ArgumentParser(
         description="pyFileIndexer - A file indexing system for tracking files across storage locations"
     )
@@ -701,13 +702,13 @@ if __name__ == "__main__":
 
     elif args.command == "serve":
         # Web 服务器模式
-        from web_server import start_web_server
+        from .web_server import start_web_server
 
         start_web_server(args.db_path, args.host, args.port)
 
     elif args.command == "merge":
         # 数据库合并模式
-        from db_merge import merge_databases
+        from .db_merge import merge_databases
 
         logger.info("开始合并数据库...")
         logger.info(f"源数据库: {args.source}")
@@ -725,3 +726,7 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"合并失败: {e}")
             sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
