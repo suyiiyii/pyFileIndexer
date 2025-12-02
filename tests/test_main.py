@@ -7,11 +7,7 @@ from pathlib import Path
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
-
-from main import (
+from pyFileIndexer.main import (
     human_size,
     get_hashes,
     get_metadata,
@@ -20,8 +16,8 @@ from main import (
     ignore_dirs,
     ignore_partials_dirs,
 )
-from models import FileHash, FileMeta
-from database import db_manager
+from pyFileIndexer.models import FileHash, FileMeta
+from pyFileIndexer.database import db_manager
 
 
 class TestUtilityFunctions:
@@ -184,7 +180,7 @@ class TestMetadataExtraction:
         small_file = test_files["small"]
 
         # 使用 patch 确保独立的配置环境
-        with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.settings") as mock_settings:
             mock_settings.MACHINE_NAME = "test_machine"
             mock_settings.SCANNED = datetime.now()
 
@@ -203,7 +199,7 @@ class TestMetadataExtraction:
     def test_get_metadata_different_files(self, test_files):
         """测试不同文件的元数据"""
         # 使用 patch 确保独立的配置环境
-        with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.settings") as mock_settings:
             mock_settings.MACHINE_NAME = "test_machine"
             mock_settings.SCANNED = datetime.now()
 
@@ -237,7 +233,7 @@ class TestMetadataExtraction:
         small_file = test_files["small"]
 
         # 模拟缺失 SCANNED 配置 - 现在应该使用默认值而不是抛出异常
-        with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.settings") as mock_settings:
             # 删除属性而不是设置为 None，以测试 getattr 的默认值行为
             del mock_settings.SCANNED
             # 也删除 MACHINE_NAME 来测试默认值
@@ -256,7 +252,7 @@ class TestMetadataExtraction:
         """测试自定义机器名称"""
         small_file = test_files["small"]
 
-        with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.settings") as mock_settings:
             mock_settings.MACHINE_NAME = "custom_machine"
             mock_settings.SCANNED = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -296,10 +292,10 @@ class TestFileScanningLogic:
         """测试扫描新文件"""
         small_file = test_files["small"]
 
-        with patch("main.db_manager", memory_db_manager):
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
             scan_file(small_file)
             # 刷新批量处理器以确保数据写入数据库
-            from main import batch_processor
+            from pyFileIndexer.main import batch_processor
 
             batch_processor.flush()
 
@@ -320,19 +316,19 @@ class TestFileScanningLogic:
         """测试扫描已存在且未修改的文件"""
         small_file = test_files["small"]
 
-        with patch("main.db_manager", memory_db_manager):
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
             scan_file(small_file)
-            from main import batch_processor
+            from pyFileIndexer.main import batch_processor
             batch_processor.flush()
 
             file_meta = memory_db_manager.get_file_by_path(str(small_file.absolute()))
-            with patch("main.get_metadata") as mock_get_metadata:
+            with patch("pyFileIndexer.main.get_metadata") as mock_get_metadata:
                 mock_get_metadata.return_value = file_meta
                 scan_file(small_file)
                 batch_processor.flush()
 
             with memory_db_manager.session_factory() as session:
-                from models import FileMeta
+                from pyFileIndexer.models import FileMeta
                 file = (
                     session.query(FileMeta)
                     .filter_by(path=str(small_file.absolute()))
@@ -350,11 +346,11 @@ class TestFileScanningLogic:
         """测试扫描已修改的文件"""
         small_file = test_files["small"]
 
-        with patch("main.db_manager", memory_db_manager):
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
             # 首次扫描
             scan_file(small_file)
             # 刷新批量处理器
-            from main import batch_processor
+            from pyFileIndexer.main import batch_processor
 
             batch_processor.flush()
 
@@ -369,7 +365,7 @@ class TestFileScanningLogic:
             # 验证文件被标记为修改
             files = []
             with memory_db_manager.session_factory() as session:
-                from models import FileMeta
+                from pyFileIndexer.models import FileMeta
 
                 files = (
                     session.query(FileMeta)
@@ -393,7 +389,7 @@ class TestFileScanningLogic:
 
         def scan_with_error_handling():
             try:
-                with patch("main.db_manager", file_db_manager):
+                with patch("pyFileIndexer.main.db_manager", file_db_manager):
                     scan_file(small_file)
             except Exception as e:
                 errors.append(e)
@@ -422,13 +418,13 @@ class TestWorkerThreads:
         file_queue.put(test_files["small"])
         file_queue.put(Path())  # 结束信号
 
-        with patch("main.db_manager", memory_db_manager):
-            with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
+            with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
                 mock_stop_event.is_set.return_value = False
 
                 scan_file_worker(file_queue)
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -450,8 +446,8 @@ class TestWorkerThreads:
         # 模拟进度条
         mock_pbar = Mock()
 
-        with patch("main.db_manager", memory_db_manager):
-            with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
+            with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
                 mock_stop_event.is_set.return_value = False
 
                 scan_file_worker(file_queue, mock_pbar)
@@ -465,7 +461,7 @@ class TestWorkerThreads:
         file_queue = queue.Queue()
         file_queue.put(test_files["small"])
 
-        with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
             mock_stop_event.is_set.return_value = True
 
             # 工作线程应该立即退出
@@ -486,11 +482,11 @@ class TestWorkerThreads:
         file_queue.put(nonexistent_file)
         file_queue.put(Path())  # 结束信号
 
-        with patch("main.db_manager", memory_db_manager):
-            with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.db_manager", memory_db_manager):
+            with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
                 mock_stop_event.is_set.return_value = False
 
-                with patch("main.logger") as mock_logger:
+                with patch("pyFileIndexer.main.logger") as mock_logger:
                     scan_file_worker(file_queue)
 
                     # 验证错误被记录
@@ -502,7 +498,7 @@ class TestWorkerThreads:
         file_queue = queue.Queue()
         file_queue.put(Path())  # 立即结束信号
 
-        with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
             mock_stop_event.is_set.return_value = False
 
             # 应该正常退出而不报错
@@ -528,8 +524,8 @@ class TestConcurrentScanning:
         for _ in range(thread_count):
             file_queue.put(Path())
 
-        with patch("main.db_manager", file_db_manager):
-            with patch("main.stop_event") as mock_stop_event:
+        with patch("pyFileIndexer.main.db_manager", file_db_manager):
+            with patch("pyFileIndexer.main.stop_event") as mock_stop_event:
                 mock_stop_event.is_set.return_value = False
 
                 threads = []
@@ -544,13 +540,13 @@ class TestConcurrentScanning:
                     thread.join()
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
         # 验证所有文件都被处理
         with file_db_manager.session_factory() as session:
-            from models import FileMeta
+            from pyFileIndexer.models import FileMeta
 
             file_count = session.query(FileMeta).count()
             assert file_count == len(test_files)

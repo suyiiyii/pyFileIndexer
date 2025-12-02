@@ -8,12 +8,8 @@ from datetime import datetime
 from unittest.mock import patch, Mock
 import subprocess
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "pyFileIndexer"))
-
-from database import DatabaseManager
-from models import FileHash, FileMeta
+from pyFileIndexer.database import DatabaseManager
+from pyFileIndexer.models import FileHash, FileMeta
 
 
 class TestEndToEndScanning:
@@ -30,10 +26,10 @@ class TestEndToEndScanning:
         db_manager.init(f"sqlite:///{db_path}")
 
         # 模拟主程序的扫描逻辑
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "integration_test"
                 mock_settings.SCANNED = datetime.now()
 
@@ -45,7 +41,7 @@ class TestEndToEndScanning:
                     scan_file(file_path)
 
                 # 刷新批量处理器以确保数据写入数据库
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -70,10 +66,10 @@ class TestEndToEndScanning:
         db_manager = DatabaseManager()
         db_manager.init(f"sqlite:///{db_path}")
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "incremental_test"
                 mock_settings.SCANNED = datetime.now()
 
@@ -82,7 +78,7 @@ class TestEndToEndScanning:
                 scan_file(small_file)
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -135,10 +131,10 @@ class TestEndToEndScanning:
         file1.write_text(content)
         file2.write_text(content)
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "duplicate_test"
                 mock_settings.SCANNED = datetime.now()
 
@@ -147,7 +143,7 @@ class TestEndToEndScanning:
                 scan_file(file2)
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -177,17 +173,17 @@ class TestEndToEndScanning:
         db_manager1 = DatabaseManager()
         db_manager1.init(f"sqlite:///{db_path}")
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
-        with patch("main.db_manager", db_manager1):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager1):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "persistence_test"
                 mock_settings.SCANNED = datetime.now()
 
                 scan_file(test_files["small"])
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -219,14 +215,14 @@ class TestConcurrentScanning:
         db_manager = DatabaseManager()
         db_manager.init(f"sqlite:///{db_path}")
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
         errors = []
 
         def scan_files_worker(files_subset):
             try:
-                with patch("main.db_manager", db_manager):
-                    with patch("main.settings") as mock_settings:
+                with patch("pyFileIndexer.main.db_manager", db_manager):
+                    with patch("pyFileIndexer.main.settings") as mock_settings:
                         mock_settings.MACHINE_NAME = (
                             f"worker_{threading.current_thread().ident}"
                         )
@@ -236,7 +232,7 @@ class TestConcurrentScanning:
                             scan_file(file_path)
 
                         # 刷新批量处理器
-                        from main import batch_processor
+                        from pyFileIndexer.main import batch_processor
 
                         batch_processor.flush()
             except Exception as e:
@@ -294,15 +290,15 @@ class TestConcurrentScanning:
             file_path.write_text(f"Content of file {i}")
             test_files.append(file_path)
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
         errors = []
         completed_files = []
 
         def scan_files_worker(files_subset):
             try:
-                with patch("main.db_manager", db_manager):
-                    with patch("main.settings") as mock_settings:
+                with patch("pyFileIndexer.main.db_manager", db_manager):
+                    with patch("pyFileIndexer.main.settings") as mock_settings:
                         mock_settings.MACHINE_NAME = (
                             f"load_test_{threading.current_thread().ident}"
                         )
@@ -313,7 +309,7 @@ class TestConcurrentScanning:
                             completed_files.append(file_path)
 
                         # 刷新批量处理器
-                        from main import batch_processor
+                        from pyFileIndexer.main import batch_processor
 
                         batch_processor.flush()
             except Exception as e:
@@ -411,7 +407,7 @@ class TestErrorRecovery:
             test_file.chmod(0o000)  # 移除所有权限
 
             try:
-                from main import get_hashes
+                from pyFileIndexer.main import get_hashes
 
                 with pytest.raises(PermissionError):
                     get_hashes(test_file)
@@ -493,10 +489,10 @@ class TestDataIntegrity:
         db_manager = DatabaseManager()
         db_manager.init(f"sqlite:///{db_path}")
 
-        from main import scan_file, get_hashes
+        from pyFileIndexer.main import scan_file, get_hashes
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "integrity_test"
                 mock_settings.SCANNED = datetime.now()
 
@@ -505,7 +501,7 @@ class TestDataIntegrity:
                 scan_file(test_file)
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -613,7 +609,7 @@ class TestMemoryUsage:
         db_manager = DatabaseManager()
         db_manager.init(f"sqlite:///{db_path}")
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
         # 监控内存使用（简单版本）
         try:
@@ -627,8 +623,8 @@ class TestMemoryUsage:
             use_psutil = False
             initial_memory = 0
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "memory_test"
                 mock_settings.SCANNED = datetime.now()
 
@@ -640,7 +636,7 @@ class TestMemoryUsage:
                     # 每100个文件检查一次内存并刷新批量处理器
                     if i % 100 == 0:
                         # 刷新批量处理器
-                        from main import batch_processor
+                        from pyFileIndexer.main import batch_processor
 
                         batch_processor.flush()
 
@@ -652,7 +648,7 @@ class TestMemoryUsage:
                             assert memory_increase < 100 * 1024 * 1024  # 不超过100MB
 
                 # 最终刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -690,17 +686,17 @@ class TestBackupAndRestore:
         db_manager = DatabaseManager()
         db_manager.init(f"sqlite:///{original_db_path}")
 
-        from main import scan_file
+        from pyFileIndexer.main import scan_file
 
-        with patch("main.db_manager", db_manager):
-            with patch("main.settings") as mock_settings:
+        with patch("pyFileIndexer.main.db_manager", db_manager):
+            with patch("pyFileIndexer.main.settings") as mock_settings:
                 mock_settings.MACHINE_NAME = "backup_test"
                 mock_settings.SCANNED = datetime.now()
 
                 scan_file(test_files["small"])
 
                 # 刷新批量处理器
-                from main import batch_processor
+                from pyFileIndexer.main import batch_processor
 
                 batch_processor.flush()
 
@@ -745,7 +741,8 @@ class TestCommandLineIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -846,12 +843,12 @@ __pycache__
         ignore_file.write_text(ignore_content)
 
         # 构建命令行参数，使用相对路径
-        main_script_rel = Path("pyFileIndexer") / "main.py"
         cmd = [
             "uv",
             "run",
             "python",
-            str(main_script_rel),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -943,7 +940,7 @@ __pycache__
         log_path = temp_dir / "cli_duplicate.log"
 
         # 首先直接计算重复文件的哈希用于对比
-        from main import get_hashes
+        from pyFileIndexer.main import get_hashes
 
         duplicate1_path = cli_test_directory["duplicate1.txt"]
         duplicate2_path = cli_test_directory["duplicate2.txt"]
@@ -954,7 +951,8 @@ __pycache__
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1045,7 +1043,8 @@ __pycache__
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1123,7 +1122,8 @@ __pycache__
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1243,7 +1243,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1411,7 +1412,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1628,7 +1630,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1724,7 +1727,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1828,7 +1832,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
@@ -1956,7 +1961,8 @@ class TestArchiveIntegration:
             "uv",
             "run",
             "python",
-            str(cli_main_script_path),
+            "-m",
+            "pyFileIndexer.main",
             "scan",
             str(test_root),
             "--machine-name",
