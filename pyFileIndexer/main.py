@@ -333,10 +333,6 @@ def scan_file_worker(
 ):
     """文件扫描工作线程。"""
     logger.info("扫描工作线程启动。")
-    try:
-        batch_processor.clear()
-    except Exception:
-        pass
     current_file = None
     while not stop_event.is_set():
         try:
