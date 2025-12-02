@@ -870,8 +870,10 @@ __pycache__
         project_ignore.write_text(ignore_content)
 
         try:
+            env = os.environ.copy()
+            env["DYNACONF_ENABLE_IGNORE_RULES"] = "true"
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60, cwd=project_root
+                cmd, capture_output=True, text=True, timeout=60, cwd=project_root, env=env
             )
         finally:
             # 清理.ignore文件
