@@ -42,11 +42,13 @@ WORKDIR /app
 
 # 复制 Python 项目配置并安装依赖
 COPY ./pyproject.toml ./uv.lock ./
-RUN uv sync --frozen
 
 # 复制应用代码
 COPY ./pyFileIndexer ./pyFileIndexer
-# 后端代码已合并到pyFileIndexer目录中
+COPY ./main.py ./
+
+# 安装依赖
+RUN uv sync --frozen
 
 # 从前端构建阶段复制构建产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
@@ -61,4 +63,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # 启动命令 - 使用新的包方式
 ENTRYPOINT ["uv", "run", "python", "-m", "pyFileIndexer"]
 CMD ["--help"]
-
