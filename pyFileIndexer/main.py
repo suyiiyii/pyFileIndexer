@@ -5,6 +5,7 @@ import logging
 import os
 import queue
 import signal
+import time
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -349,7 +350,6 @@ def scan_directory(directory: Path, file_queue: "queue.Queue[Path]", dir_queue: 
                     if pbar is not None:
                         with lock:
                             pbar.total = (pbar.total or 0) + 1
-                            pbar.refresh()
             except Exception as e:
                 logger.error(f"Error processing path {path}: {type(e).__name__}: {e}")
     except Exception as e:
@@ -387,6 +387,20 @@ def scan(path: Union[str, Path]):
         position=0,
         leave=True
     )
+
+    # 每3秒强制刷新一次进度条
+    refresh_stop_event = threading.Event()
+
+    def _force_refresh():
+        while not refresh_stop_event.is_set() and not stop_event.is_set():
+            time.sleep(3)
+            try:
+                pbar.refresh()
+            except Exception:
+                pass
+
+    refresh_thread = threading.Thread(target=_force_refresh, name="ProgressRefresher", daemon=True)
+    refresh_thread.start()
 
     # 启动文件处理worker线程（在后台持续工作）
     workers = []
@@ -438,7 +452,12 @@ def scan(path: Union[str, Path]):
     for worker in workers:
         worker.join()
 
-    # 关闭进度条
+    # 停止刷新线程并关闭进度条
+    refresh_stop_event.set()
+    try:
+        refresh_thread.join(timeout=1)
+    except Exception:
+        pass
     pbar.close()
 
     # 刷新剩余的批量数据
