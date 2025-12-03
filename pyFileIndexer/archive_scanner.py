@@ -8,6 +8,8 @@ import datetime
 import rarfile
 
 from .models import FileMeta
+from .cached_config import cached_config
+from .metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -159,9 +161,19 @@ class ZipArchiveScanner(ArchiveScanner):
         return zip_info.filename
 
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
+        fails = 0
+        threshold = getattr(cached_config, "archive_entry_fail_threshold", 50)
         try:
             with zipfile.ZipFile(self.archive_path, "r") as zip_file:
-                for info in zip_file.filelist:
+                try:
+                    entries = zip_file.infolist()
+                except Exception as e:
+                    logger.error(
+                        f"Error listing entries in ZIP {self.archive_path}: {e}"
+                    )
+                    metrics.inc_errors("archive_list")
+                    return
+                for info in entries:
                     # 解码文件名
                     decoded_filename = self._decode_filename(info)
 
@@ -196,22 +208,40 @@ class ZipArchiveScanner(ArchiveScanner):
                             data_reader=make_reader(data),
                         )
                         yield entry
-                    except Exception as e:
-                        logger.error(
+                    except (zipfile.BadZipFile, zipfile.LargeZipFile, Exception) as e:
+                        logger.warning(
                             f"Error reading file {decoded_filename} from ZIP: {e}"
                         )
+                        metrics.inc_errors("archive_entry_read")
+                        fails += 1
+                        if fails >= threshold:
+                            logger.warning(
+                                f"Too many entry read failures in ZIP, skipping archive: {self.archive_path}"
+                            )
+                            break
                         continue
-        except Exception as e:
+        except (zipfile.BadZipFile, Exception) as e:
             logger.error(f"Error scanning ZIP file {self.archive_path}: {e}")
+            metrics.inc_errors("archive_open")
 
 
 class TarArchiveScanner(ArchiveScanner):
     """TAR文件扫描器"""
 
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
+        fails = 0
+        threshold = getattr(cached_config, "archive_entry_fail_threshold", 50)
         try:
             with tarfile.open(self.archive_path, "r:*") as tar_file:
-                for member in tar_file.getmembers():
+                try:
+                    members = tar_file.getmembers()
+                except Exception as e:
+                    logger.error(
+                        f"Error listing entries in TAR {self.archive_path}: {e}"
+                    )
+                    metrics.inc_errors("archive_list")
+                    return
+                for member in members:
                     # 跳过目录
                     if member.isdir():
                         continue
@@ -253,20 +283,38 @@ class TarArchiveScanner(ArchiveScanner):
                             logger.warning(
                                 f"Cannot extract file {member.name} from TAR"
                             )
-                    except Exception as e:
-                        logger.error(f"Error reading file {member.name} from TAR: {e}")
+                    except (tarfile.ReadError, Exception) as e:
+                        logger.warning(f"Error reading file {member.name} from TAR: {e}")
+                        metrics.inc_errors("archive_entry_read")
+                        fails += 1
+                        if fails >= threshold:
+                            logger.warning(
+                                f"Too many entry read failures in TAR, skipping archive: {self.archive_path}"
+                            )
+                            break
                         continue
-        except Exception as e:
+        except (tarfile.ReadError, Exception) as e:
             logger.error(f"Error scanning TAR file {self.archive_path}: {e}")
+            metrics.inc_errors("archive_open")
 
 
 class RarArchiveScanner(ArchiveScanner):
     """RAR文件扫描器"""
 
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
+        fails = 0
+        threshold = getattr(cached_config, "archive_entry_fail_threshold", 50)
         try:
             with rarfile.RarFile(self.archive_path) as rar_file:
-                for info in rar_file.infolist():
+                try:
+                    infos = rar_file.infolist()
+                except (rarfile.Error, Exception) as e:
+                    logger.error(
+                        f"Error listing entries in RAR {self.archive_path}: {e}"
+                    )
+                    metrics.inc_errors("archive_list")
+                    return
+                for info in infos:
                     # 跳过目录
                     if info.is_dir():
                         continue
@@ -300,13 +348,27 @@ class RarArchiveScanner(ArchiveScanner):
                             data_reader=make_reader(data),
                         )
                         yield entry
-                    except Exception as e:
-                        logger.error(
+                    except (
+                        rarfile.BadRarFile,
+                        rarfile.NeedFirstVolume,
+                        rarfile.RarCRCError,
+                        rarfile.Error,
+                        Exception,
+                    ) as e:
+                        logger.warning(
                             f"Error reading file {info.filename} from RAR: {e}"
                         )
+                        metrics.inc_errors("archive_entry_read")
+                        fails += 1
+                        if fails >= threshold:
+                            logger.warning(
+                                f"Too many entry read failures in RAR, skipping archive: {self.archive_path}"
+                            )
+                            break
                         continue
-        except Exception as e:
+        except (rarfile.Error, Exception) as e:
             logger.error(f"Error scanning RAR file {self.archive_path}: {e}")
+            metrics.inc_errors("archive_open")
 
 
 def create_archive_scanner(

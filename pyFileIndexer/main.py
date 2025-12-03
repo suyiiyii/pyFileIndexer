@@ -336,6 +336,8 @@ def scan_archive_file(archive_path: Path):
             metrics.inc_errors("scan_archive")
         except Exception:
             pass
+        if getattr(cached_config, "archive_strict", False):
+            raise
 
 
 def scan_file_worker(

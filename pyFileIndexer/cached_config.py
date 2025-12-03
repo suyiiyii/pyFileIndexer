@@ -46,6 +46,10 @@ class CachedConfig:
             self._skip_rules_enabled: bool = getattr(
                 settings, "ENABLE_IGNORE_RULES", False
             )
+            self._archive_strict: bool = getattr(settings, "ARCHIVE_STRICT", False)
+            self._archive_entry_fail_threshold: int = getattr(
+                settings, "ARCHIVE_ENTRY_FAIL_THRESHOLD", 50
+            )
 
             # 标记已初始化
             self._initialized = True
@@ -93,6 +97,14 @@ class CachedConfig:
     def skip_rules_enabled(self) -> bool:
         return self._skip_rules_enabled
 
+    @property
+    def archive_strict(self) -> bool:
+        return self._archive_strict
+
+    @property
+    def archive_entry_fail_threshold(self) -> int:
+        return self._archive_entry_fail_threshold
+
     def update_machine_name(self, machine_name: str) -> None:
         """更新机器名称（支持命令行参数覆盖）"""
         self._machine_name = machine_name
@@ -114,6 +126,10 @@ class CachedConfig:
                 settings, "MAX_ARCHIVE_FILE_SIZE", 9223372036854775807
             )
             self._skip_rules_enabled = getattr(settings, "ENABLE_IGNORE_RULES", False)
+            self._archive_strict = getattr(settings, "ARCHIVE_STRICT", False)
+            self._archive_entry_fail_threshold = getattr(
+                settings, "ARCHIVE_ENTRY_FAIL_THRESHOLD", 50
+            )
 
 
 # 创建全局单例实例
