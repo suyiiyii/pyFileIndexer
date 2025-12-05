@@ -270,14 +270,50 @@ def scan_archive_file(archive_path: Path):
         machine = cached_config.machine_name
         scanned = cached_config.scanned
 
-        # 第一步：收集所有条目和虚拟路径
-        entries_data = []
-        virtual_paths = []
+        # 分批处理：避免大压缩包一次性加载所有条目到内存
+        BATCH_SIZE = 500  # 每批处理 500 个条目
+        entries_batch = []
+        virtual_paths_batch = []
+
         try:
             for entry in scanner.scan_entries():
                 virtual_path = scanner.create_virtual_path(entry.name)
-                entries_data.append((entry, virtual_path))
-                virtual_paths.append(virtual_path)
+                entries_batch.append((entry, virtual_path))
+                virtual_paths_batch.append(virtual_path)
+
+                # 当批次达到指定大小时，处理这一批
+                if len(entries_batch) >= BATCH_SIZE:
+                    _process_archive_batch(
+                        entries_batch,
+                        virtual_paths_batch,
+                        scanner,
+                        machine,
+                        scanned,
+                        batch_processor,
+                        archive_type,
+                        db_manager,
+                        metrics,
+                        logger,
+                    )
+                    # 清空批次，释放内存
+                    entries_batch.clear()
+                    virtual_paths_batch.clear()
+
+            # 处理剩余的条目
+            if entries_batch:
+                _process_archive_batch(
+                    entries_batch,
+                    virtual_paths_batch,
+                    scanner,
+                    machine,
+                    scanned,
+                    batch_processor,
+                    archive_type,
+                    db_manager,
+                    metrics,
+                    logger,
+                )
+
         except Exception as e:
             logger.error(
                 f"Error iterating archive entries in {archive_path}: {e}", exc_info=True
@@ -288,63 +324,6 @@ def scan_archive_file(archive_path: Path):
                 pass
             return
 
-        # 第二步：批量查询所有虚拟路径是否已存在（减少数据库查询次数）
-        existing_files = db_manager.get_files_with_hash_by_paths_batch(virtual_paths)
-
-        # 第三步：处理每个条目
-        for entry, virtual_path in entries_data:
-            try:
-                # 创建文件元数据
-                file_meta = scanner.create_file_meta(entry, machine, scanned)
-                file_meta.operation = "ADD"  # type: ignore[attr-defined]
-
-                # 检查是否已存在（从批量查询结果中获取）
-                dto = existing_files.get(virtual_path)
-                if dto:
-                    # 文件已存在，检查是否需要更新
-                    if (
-                        dto.hash
-                        and entry.size == dto.hash.size
-                        and getattr(file_meta, "modified", None) == dto.meta.modified
-                    ):
-                        logger.debug(
-                            f"Skipping unchanged archived file: {virtual_path}"
-                        )
-                        continue
-                    file_meta.operation = "MOD"  # type: ignore[attr-defined]
-
-                # 计算文件哈希
-                try:
-                    data = entry.read_data()
-                    hashes = calculate_hash_from_data(data)
-                    file_hash = FileHash(**hashes, size=entry.size)
-
-                    # 添加到批量处理队列
-                    batch_processor.add_file(file_meta, file_hash, file_meta.operation)
-                    logger.debug(f"Added archived file: {virtual_path}")
-                    try:
-                        metrics.inc_archive_entries(archive_type)
-                        metrics.inc_bytes(entry.size)
-                    except Exception:
-                        pass
-
-                except Exception as e:
-                    logger.error(
-                        f"Error processing archived file {entry.name}: {e}",
-                        exc_info=True,
-                    )
-                    try:
-                        metrics.inc_errors("archive_read")
-                    except Exception:
-                        pass
-                    continue
-
-            except Exception as e:
-                logger.error(
-                    f"Error processing archive entry {entry.name}: {e}", exc_info=True
-                )
-                continue
-
     except Exception as e:
         logger.error(f"Error scanning archive {archive_path}: {e}", exc_info=True)
         try:
@@ -353,6 +332,75 @@ def scan_archive_file(archive_path: Path):
             pass
         if getattr(cached_config, "archive_strict", False):
             raise
+
+
+def _process_archive_batch(
+    entries_batch,
+    virtual_paths_batch,
+    scanner,
+    machine,
+    scanned,
+    batch_processor,
+    archive_type,
+    db_manager,
+    metrics,
+    logger,
+):
+    """处理一批压缩包条目"""
+    # 批量查询这批虚拟路径是否已存在
+    existing_files = db_manager.get_files_with_hash_by_paths_batch(virtual_paths_batch)
+
+    # 处理每个条目
+    for entry, virtual_path in entries_batch:
+        try:
+            # 创建文件元数据
+            file_meta = scanner.create_file_meta(entry, machine, scanned)
+            file_meta.operation = "ADD"  # type: ignore[attr-defined]
+
+            # 检查是否已存在（从批量查询结果中获取）
+            dto = existing_files.get(virtual_path)
+            if dto:
+                # 文件已存在，检查是否需要更新
+                if (
+                    dto.hash
+                    and entry.size == dto.hash.size
+                    and getattr(file_meta, "modified", None) == dto.meta.modified
+                ):
+                    logger.debug(f"Skipping unchanged archived file: {virtual_path}")
+                    continue
+                file_meta.operation = "MOD"  # type: ignore[attr-defined]
+
+            # 计算文件哈希
+            try:
+                data = entry.read_data()
+                hashes = calculate_hash_from_data(data)
+                file_hash = FileHash(**hashes, size=entry.size)
+
+                # 添加到批量处理队列
+                batch_processor.add_file(file_meta, file_hash, file_meta.operation)
+                logger.debug(f"Added archived file: {virtual_path}")
+                try:
+                    metrics.inc_archive_entries(archive_type)
+                    metrics.inc_bytes(entry.size)
+                except Exception:
+                    pass
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing archived file {entry.name}: {e}",
+                    exc_info=True,
+                )
+                try:
+                    metrics.inc_errors("archive_read")
+                except Exception:
+                    pass
+                continue
+
+        except Exception as e:
+            logger.error(
+                f"Error processing archive entry {entry.name}: {e}", exc_info=True
+            )
+            continue
 
 
 def scan_file_worker(

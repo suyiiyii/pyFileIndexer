@@ -571,7 +571,9 @@ class DatabaseManager:
                 "pages": total_pages,
             }
 
-    def get_existing_hashes_batch(self, hash_data: list[dict]) -> dict[str, int]:
+    def get_existing_hashes_batch(
+        self, hash_data: list[dict]
+    ) -> dict[tuple[str, str, str], int]:
         """批量查询已存在的哈希，返回哈希值到ID的映射"""
         if not hash_data:
             return {}
