@@ -5,6 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from pyFileIndexer.web_server import create_app
 from pyFileIndexer.models import FileMeta, FileHash
+from pyFileIndexer.dto import FileHashDTO, FileMetaDTO, FileWithHashDTO
 
 
 @pytest.fixture
@@ -15,8 +16,45 @@ def client():
 
 
 @pytest.fixture
+def mock_file_meta_dto():
+    """创建模拟文件元数据 DTO"""
+    return FileMetaDTO(
+        id=1,
+        hash_id=1,
+        name="test_file.txt",
+        path="/tmp/test_file.txt",
+        machine="test_machine",
+        created=datetime(2024, 1, 1, 12, 0, 0),
+        modified=datetime(2024, 1, 1, 12, 0, 0),
+        scanned=datetime(2024, 1, 1, 12, 0, 0),
+        operation="ADD",
+        is_archived=0,
+        archive_path=None,
+    )
+
+
+@pytest.fixture
+def mock_file_hash_dto():
+    """创建模拟文件哈希 DTO"""
+    return FileHashDTO(
+        id=1,
+        size=1024,
+        md5="d41d8cd98f00b204e9800998ecf8427e",
+        sha1="da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
+
+
+@pytest.fixture
+def mock_file_with_hash_dto(mock_file_meta_dto, mock_file_hash_dto):
+    """创建模拟的文件+哈希 DTO"""
+    return FileWithHashDTO(meta=mock_file_meta_dto, hash=mock_file_hash_dto)
+
+
+# 保留旧的 fixtures 以兼容其他测试
+@pytest.fixture
 def mock_file_meta():
-    """创建模拟文件元数据"""
+    """创建模拟文件元数据（旧版，仅用于兼容）"""
     return FileMeta(
         id=1,
         hash_id=1,
@@ -32,7 +70,7 @@ def mock_file_meta():
 
 @pytest.fixture
 def mock_file_hash():
-    """创建模拟文件哈希"""
+    """创建模拟文件哈希（旧版，仅用于兼容）"""
     return FileHash(
         id=1,
         size=1024,
@@ -59,12 +97,10 @@ class TestWebAPI:
         assert response.json() == {"status": "healthy"}
 
     @patch("pyFileIndexer.web_server.db_manager")
-    def test_get_files_success(
-        self, mock_db_manager, client, mock_file_meta, mock_file_hash
-    ):
+    def test_get_files_success(self, mock_db_manager, client, mock_file_with_hash_dto):
         """测试获取文件列表成功"""
         mock_db_manager.get_files_paginated.return_value = {
-            "files": [(mock_file_meta, mock_file_hash)],
+            "files": [mock_file_with_hash_dto],
             "total": 1,
             "page": 1,
             "per_page": 20,
@@ -87,11 +123,11 @@ class TestWebAPI:
 
     @patch("pyFileIndexer.web_server.db_manager")
     def test_get_files_with_filters(
-        self, mock_db_manager, client, mock_file_meta, mock_file_hash
+        self, mock_db_manager, client, mock_file_with_hash_dto
     ):
         """测试带过滤器的文件列表查询"""
         mock_db_manager.get_files_paginated.return_value = {
-            "files": [(mock_file_meta, mock_file_hash)],
+            "files": [mock_file_with_hash_dto],
             "total": 1,
             "page": 1,
             "per_page": 20,
@@ -121,10 +157,10 @@ class TestWebAPI:
 
     @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_name(
-        self, mock_db_manager, client, mock_file_meta, mock_file_hash
+        self, mock_db_manager, client, mock_file_with_hash_dto
     ):
         """测试按文件名搜索"""
-        mock_db_manager.search_files.return_value = [(mock_file_meta, mock_file_hash)]
+        mock_db_manager.search_files.return_value = [mock_file_with_hash_dto]
 
         response = client.get(
             "/api/search", params={"query": "test", "search_type": "name"}
@@ -139,10 +175,10 @@ class TestWebAPI:
 
     @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_path(
-        self, mock_db_manager, client, mock_file_meta, mock_file_hash
+        self, mock_db_manager, client, mock_file_with_hash_dto
     ):
         """测试按路径搜索"""
-        mock_db_manager.search_files.return_value = [(mock_file_meta, mock_file_hash)]
+        mock_db_manager.search_files.return_value = [mock_file_with_hash_dto]
 
         response = client.get(
             "/api/search", params={"query": "/tmp", "search_type": "path"}
@@ -157,10 +193,10 @@ class TestWebAPI:
 
     @patch("pyFileIndexer.web_server.db_manager")
     def test_search_files_by_hash(
-        self, mock_db_manager, client, mock_file_meta, mock_file_hash
+        self, mock_db_manager, client, mock_file_with_hash_dto
     ):
         """测试按哈希搜索"""
-        mock_db_manager.search_files.return_value = [(mock_file_meta, mock_file_hash)]
+        mock_db_manager.search_files.return_value = [mock_file_with_hash_dto]
 
         response = client.get(
             "/api/search",
@@ -219,8 +255,8 @@ class TestWebAPI:
                 {
                     "hash": "d41d8cd98f00b204e9800998ecf8427e",
                     "files": [
-                        (mock_file_meta, mock_file_hash),
-                        (mock_file_meta, mock_file_hash),
+                        mock_file_with_hash_dto,
+                        mock_file_with_hash_dto,
                     ],
                 }
             ],

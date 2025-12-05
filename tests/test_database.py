@@ -64,23 +64,37 @@ class TestDatabaseManager:
     @pytest.mark.database
     def test_add_hash(self, memory_db_manager, sample_file_hash):
         """测试添加哈希信息"""
+        # 保存原始值（避免在 Session 外访问 ORM 对象）
+        expected_md5 = sample_file_hash.md5
+        expected_sha1 = sample_file_hash.sha1
+        expected_sha256 = sample_file_hash.sha256
+
         hash_id = memory_db_manager.add_hash(sample_file_hash)
 
         assert hash_id is not None
         retrieved_hash = memory_db_manager.get_hash_by_id(hash_id)
         assert retrieved_hash is not None
-        assert retrieved_hash.md5 == sample_file_hash.md5
+        # retrieved_hash 现在是 DTO
+        assert retrieved_hash.md5 == expected_md5
+        assert retrieved_hash.sha1 == expected_sha1
+        assert retrieved_hash.sha256 == expected_sha256
 
     @pytest.mark.unit
     @pytest.mark.database
     def test_add_file(self, memory_db_manager, sample_file_meta):
         """测试添加文件信息"""
+        # 保存原始值（避免在 Session 外访问 ORM 对象）
+        expected_name = sample_file_meta.name
+        expected_path = sample_file_meta.path
+
         file_id = memory_db_manager.add_file(sample_file_meta)
 
         assert file_id is not None
-        retrieved_file = memory_db_manager.get_file_by_name(sample_file_meta.name)
+        retrieved_file = memory_db_manager.get_file_by_name(expected_name)
         assert retrieved_file is not None
-        assert retrieved_file.path == sample_file_meta.path
+        # retrieved_file 现在是 DTO
+        assert retrieved_file.path == expected_path
+        assert retrieved_file.name == expected_name
 
     @pytest.mark.unit
     @pytest.mark.database

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 import uvicorn
 
 from .database import db_manager
+from .dto import FileWithHashDTO
 from .web_models import (
     PaginatedFilesResponse,
     StatisticsResponse,
@@ -26,40 +27,36 @@ from .web_models import (
 logger = logging.getLogger(__name__)
 
 
-def convert_db_record_to_response(file_meta, file_hash) -> FileWithHashResponse:
-    """将数据库记录转换为响应模型"""
+def convert_dto_to_response(dto: FileWithHashDTO) -> FileWithHashResponse:
+    """将 DTO 转换为响应模型"""
     try:
-        # 安全地访问file_meta属性，提供默认值
+        # 直接访问 DTO 属性
         meta_response = FileMetaResponse(
-            id=getattr(file_meta, "id", None),
-            hash_id=getattr(file_meta, "hash_id", None),
-            name=getattr(file_meta, "name", ""),
-            path=getattr(file_meta, "path", ""),
-            machine=getattr(file_meta, "machine", "unknown"),
-            created=getattr(file_meta, "created", "1970-01-01T00:00:00"),
-            modified=getattr(file_meta, "modified", "1970-01-01T00:00:00"),
-            scanned=getattr(file_meta, "scanned", "1970-01-01T00:00:00"),
-            operation=getattr(file_meta, "operation", "ADD"),
+            id=dto.meta.id,
+            hash_id=dto.meta.hash_id,
+            name=dto.meta.name,
+            path=dto.meta.path,
+            machine=dto.meta.machine,
+            created=dto.meta.created,
+            modified=dto.meta.modified,
+            scanned=dto.meta.scanned,
+            operation=dto.meta.operation,
         )
 
         hash_response = None
-        if file_hash:
-            try:
-                hash_response = FileHashResponse(
-                    id=getattr(file_hash, "id", None),
-                    size=getattr(file_hash, "size", 0),
-                    md5=getattr(file_hash, "md5", ""),
-                    sha1=getattr(file_hash, "sha1", ""),
-                    sha256=getattr(file_hash, "sha256", ""),
-                )
-            except Exception as e:
-                logger.error(f"Error processing file_hash: {e}")
-                hash_response = None
+        if dto.hash:
+            hash_response = FileHashResponse(
+                id=dto.hash.id,
+                size=dto.hash.size,
+                md5=dto.hash.md5,
+                sha1=dto.hash.sha1,
+                sha256=dto.hash.sha256,
+            )
 
         return FileWithHashResponse(meta=meta_response, hash=hash_response)
 
     except Exception as e:
-        logger.error(f"Error converting database record to response: {e}")
+        logger.error(f"Error converting DTO to response: {e}")
         # 返回一个最基本的响应，避免完全失败
         return FileWithHashResponse(
             meta=FileMetaResponse(
@@ -137,9 +134,9 @@ def create_app() -> FastAPI:
             )
 
             files = []
-            for file_meta, file_hash in result["files"]:
+            for dto in result["files"]:
                 try:
-                    file_response = convert_db_record_to_response(file_meta, file_hash)
+                    file_response = convert_dto_to_response(dto)
                     files.append(file_response)
                 except Exception as e:
                     logger.error(f"Error converting file record: {e}")
@@ -173,10 +170,7 @@ def create_app() -> FastAPI:
         try:
             results = db_manager.search_files(query, search_type)
 
-            return [
-                convert_db_record_to_response(file_meta, file_hash)
-                for file_meta, file_hash in results
-            ]
+            return [convert_dto_to_response(dto) for dto in results]
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -224,10 +218,7 @@ def create_app() -> FastAPI:
             duplicates = []
             for dup_group in result["duplicates"]:
                 try:
-                    files = [
-                        convert_db_record_to_response(file_meta, file_hash)
-                        for file_meta, file_hash in dup_group["files"]
-                    ]
+                    files = [convert_dto_to_response(dto) for dto in dup_group["files"]]
                     duplicates.append(
                         DuplicateFileGroup(hash=dup_group["hash"], files=files)
                     )
@@ -270,21 +261,21 @@ def create_app() -> FastAPI:
 
             # 转换文件数据
             files = []
-            for file_meta, file_hash in result["files"]:
+            for dto in result["files"]:
                 hash_response = None
-                if file_hash:
+                if dto.hash:
                     hash_response = FileHashResponse(
-                        id=getattr(file_hash, "id", None),
-                        size=getattr(file_hash, "size", 0),
-                        md5=getattr(file_hash, "md5", ""),
-                        sha1=getattr(file_hash, "sha1", ""),
-                        sha256=getattr(file_hash, "sha256", ""),
+                        id=dto.hash.id,
+                        size=dto.hash.size,
+                        md5=dto.hash.md5,
+                        sha1=dto.hash.sha1,
+                        sha256=dto.hash.sha256,
                     )
 
                 file_info = TreeFileInfo(
-                    name=getattr(file_meta, "name", ""),
-                    size=getattr(file_hash, "size", 0) if file_hash else 0,
-                    modified=getattr(file_meta, "modified", "1970-01-01T00:00:00"),
+                    name=dto.meta.name,
+                    size=dto.hash.size if dto.hash else 0,
+                    modified=dto.meta.modified,
                     hash=hash_response,
                 )
                 files.append(file_info)

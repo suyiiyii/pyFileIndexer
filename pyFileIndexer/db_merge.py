@@ -112,18 +112,17 @@ def _merge_single_database(
                 stats["total_files_processed"] += 1
 
                 # Check if file already exists in target database
-                existing = target_db_manager.get_file_with_hash_by_path(file_meta.path)
+                dto = target_db_manager.get_file_with_hash_by_path(file_meta.path)
 
-                if existing:
-                    existing_meta, existing_hash = existing
+                if dto:
                     # Check if file data is identical
                     if (
-                        existing_hash
+                        dto.hash
                         and file_hash
-                        and existing_hash.md5 == file_hash.md5
-                        and existing_hash.sha1 == file_hash.sha1
-                        and existing_hash.sha256 == file_hash.sha256
-                        and existing_meta.machine == file_meta.machine
+                        and dto.hash.md5 == file_hash.md5
+                        and dto.hash.sha1 == file_hash.sha1
+                        and dto.hash.sha256 == file_hash.sha256
+                        and dto.meta.machine == file_meta.machine
                     ):
                         # File already exists with same data, skip
                         stats["files_skipped"] += 1

@@ -209,8 +209,8 @@ def scan_file(file: Path):
         meta.operation = "ADD"  # type: ignore[attr-defined]
 
         # 检查文件是否已存在（优化：一次查询获取文件和哈希信息）
-        result = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
-        if result:
+        dto = db_manager.get_file_with_hash_by_path(file.absolute().as_posix())
+        if dto:
             meta.operation = "MOD"  # type: ignore[attr-defined]
 
         # 获取文件哈希
@@ -279,7 +279,9 @@ def scan_archive_file(archive_path: Path):
                 entries_data.append((entry, virtual_path))
                 virtual_paths.append(virtual_path)
         except Exception as e:
-            logger.error(f"Error iterating archive entries in {archive_path}: {e}", exc_info=True)
+            logger.error(
+                f"Error iterating archive entries in {archive_path}: {e}", exc_info=True
+            )
             try:
                 metrics.inc_errors("archive_iteration")
             except Exception:
@@ -297,15 +299,13 @@ def scan_archive_file(archive_path: Path):
                 file_meta.operation = "ADD"  # type: ignore[attr-defined]
 
                 # 检查是否已存在（从批量查询结果中获取）
-                existing_result = existing_files.get(virtual_path)
-                if existing_result:
+                dto = existing_files.get(virtual_path)
+                if dto:
                     # 文件已存在，检查是否需要更新
-                    existing_meta, existing_hash = existing_result
                     if (
-                        existing_hash
-                        and entry.size == getattr(existing_hash, "size", None)
-                        and getattr(file_meta, "modified", None)
-                        == getattr(existing_meta, "modified", None)
+                        dto.hash
+                        and entry.size == dto.hash.size
+                        and getattr(file_meta, "modified", None) == dto.meta.modified
                     ):
                         logger.debug(
                             f"Skipping unchanged archived file: {virtual_path}"
@@ -329,7 +329,10 @@ def scan_archive_file(archive_path: Path):
                         pass
 
                 except Exception as e:
-                    logger.error(f"Error processing archived file {entry.name}: {e}", exc_info=True)
+                    logger.error(
+                        f"Error processing archived file {entry.name}: {e}",
+                        exc_info=True,
+                    )
                     try:
                         metrics.inc_errors("archive_read")
                     except Exception:
@@ -337,7 +340,9 @@ def scan_archive_file(archive_path: Path):
                     continue
 
             except Exception as e:
-                logger.error(f"Error processing archive entry {entry.name}: {e}", exc_info=True)
+                logger.error(
+                    f"Error processing archive entry {entry.name}: {e}", exc_info=True
+                )
                 continue
 
     except Exception as e:

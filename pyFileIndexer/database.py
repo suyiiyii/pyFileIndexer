@@ -4,13 +4,14 @@ import time
 from typing import Any, Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, tuple_, text, func, inspect as sa_inspect
+from sqlalchemy import create_engine, tuple_, text, func
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from .base import Base
 from .models import FileHash, FileMeta
+from .dto import FileHashDTO, FileMetaDTO, FileWithHashDTO
 
 
 def retry_on_db_lock(max_retries: int = 3, retry_delay: float = 0.5):
@@ -104,7 +105,7 @@ class DatabaseManager:
             )
 
         # 使用 scoped_session 自动为每个线程创建独立会话
-        session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
+        session_factory = sessionmaker(bind=self.engine)
         self.Session = scoped_session(session_factory)
 
         Base.metadata.create_all(self.engine)
@@ -193,27 +194,25 @@ class DatabaseManager:
         return self.Session()
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
-    def get_file_by_name(self, name: str) -> Optional[FileMeta]:
+    def get_file_by_name(self, name: str) -> Optional[FileMetaDTO]:
         """根据文件名查询文件信息。"""
         with self.session_scope() as session:
             result = session.query(FileMeta).filter_by(name=name).first()
             if result:
-                session.expunge(result)  # 从会话中分离，使其可以在会话外使用
-            return result
+                return FileMetaDTO.from_orm(result)
+            return None
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
-    def get_file_by_path(self, path: str) -> Optional[FileMeta]:
+    def get_file_by_path(self, path: str) -> Optional[FileMetaDTO]:
         """根据文件路径查询文件信息。"""
         with self.session_scope() as session:
             result = session.query(FileMeta).filter_by(path=path).first()
             if result:
-                session.expunge(result)
-            return result
+                return FileMetaDTO.from_orm(result)
+            return None
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
-    def get_file_with_hash_by_path(
-        self, path: str
-    ) -> Optional[tuple[FileMeta, Optional[FileHash]]]:
+    def get_file_with_hash_by_path(self, path: str) -> Optional[FileWithHashDTO]:
         """根据文件路径查询文件信息和对应的哈希信息（一次查询）。"""
         with self.session_scope() as session:
             result = (
@@ -225,17 +224,13 @@ class DatabaseManager:
 
             if result:
                 file_meta, file_hash = result
-                if file_meta:
-                    session.expunge(file_meta)
-                if file_hash:
-                    session.expunge(file_hash)
-                return (file_meta, file_hash)
+                return FileWithHashDTO.from_orm(file_meta, file_hash)
             return None
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
     def get_files_with_hash_by_paths_batch(
         self, paths: list[str]
-    ) -> dict[str, tuple[FileMeta, Optional[FileHash]]]:
+    ) -> dict[str, FileWithHashDTO]:
         """批量查询多个文件路径的信息，返回路径到文件信息的映射"""
         if not paths:
             return {}
@@ -250,31 +245,28 @@ class DatabaseManager:
 
             result_dict = {}
             for file_meta, file_hash in results:
-                if file_meta:
-                    session.expunge(file_meta)
-                if file_hash:
-                    session.expunge(file_hash)
-                result_dict[file_meta.path] = (file_meta, file_hash)  # type: ignore
+                dto = FileWithHashDTO.from_orm(file_meta, file_hash)
+                result_dict[dto.meta.path] = dto
 
             return result_dict
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
-    def get_hash_by_id(self, hash_id: int) -> Optional[FileHash]:
+    def get_hash_by_id(self, hash_id: int) -> Optional[FileHashDTO]:
         """根据哈希 ID 查询哈希信息。"""
         with self.session_scope() as session:
             result = session.query(FileHash).filter_by(id=hash_id).first()
             if result:
-                session.expunge(result)  # 分离对象
-            return result
+                return FileHashDTO.from_orm(result)
+            return None
 
     @retry_on_db_lock(max_retries=5, retry_delay=0.5)
-    def get_hash_by_hash(self, hash: dict[str, str]) -> Optional[FileHash]:
+    def get_hash_by_hash(self, hash: dict[str, str]) -> Optional[FileHashDTO]:
         """根据哈希查询哈希信息。"""
         with self.session_scope() as session:
             result = session.query(FileHash).filter_by(**hash).first()
             if result:
-                session.expunge(result)
-            return result
+                return FileHashDTO.from_orm(result)
+            return None
 
     def add_file(self, file: FileMeta) -> Any:
         """添加文件信息。"""
@@ -391,15 +383,12 @@ class DatabaseManager:
                 results = query.offset(offset).limit(per_page).all()
                 logger.debug(f"Retrieved {len(results)} files for page {page}")
 
-                # 分离对象
+                # 转换为 DTO
                 files = []
                 for file_meta, file_hash in results:
                     try:
-                        if file_meta:
-                            session.expunge(file_meta)
-                        if file_hash:
-                            session.expunge(file_hash)
-                        files.append((file_meta, file_hash))
+                        dto = FileWithHashDTO.from_orm(file_meta, file_hash)
+                        files.append(dto)
                     except Exception as e:
                         logger.error(f"Error processing file record: {e}")
                         continue
@@ -416,7 +405,9 @@ class DatabaseManager:
             logger.error(f"Error in get_files_paginated: {e}")
             raise
 
-    def search_files(self, query: str, search_type: str = "name") -> list:
+    def search_files(
+        self, query: str, search_type: str = "name"
+    ) -> list[FileWithHashDTO]:
         """搜索文件"""
         with self.session_scope() as session:
             db_query = session.query(FileMeta, FileHash).outerjoin(
@@ -436,16 +427,11 @@ class DatabaseManager:
 
             results = db_query.all()
 
-            # 分离对象
-            files = []
-            for file_meta, file_hash in results:
-                if file_meta:
-                    session.expunge(file_meta)
-                if file_hash:
-                    session.expunge(file_hash)
-                files.append((file_meta, file_hash))
-
-            return files
+            # 转换为 DTO
+            return [
+                FileWithHashDTO.from_orm(file_meta, file_hash)
+                for file_meta, file_hash in results
+            ]
 
     def get_statistics(self) -> dict:
         """获取统计信息"""
@@ -568,18 +554,13 @@ class DatabaseManager:
 
                 total_files_count += len(files)
 
-                # 先收集所有文件对象
-                file_group = list(files)
+                # 转换为 DTO
+                file_dtos = [
+                    FileWithHashDTO.from_orm(file_meta, file_hash)
+                    for file_meta, file_hash in files
+                ]
 
-                # 统一从 session 中分离对象，避免重复 expunge
-                # 使用 sqlalchemy.inspect 检查对象是否还在 session 中
-                for file_meta, file_hash in file_group:
-                    if sa_inspect(file_meta).session is not None:
-                        session.expunge(file_meta)
-                    if sa_inspect(file_hash).session is not None:
-                        session.expunge(file_hash)
-
-                duplicates.append({"hash": md5_hash, "files": file_group})
+                duplicates.append({"hash": md5_hash, "files": file_dtos})
 
             return {
                 "duplicates": duplicates,
@@ -850,13 +831,9 @@ class DatabaseManager:
                     if dir_name:  # 确保目录名不为空
                         directories.add(dir_name)
                 else:
-                    # 是当前目录的文件
-                    # 使用 inspect 检查对象是否在 session 中,避免重复 expunge
-                    if file_meta and sa_inspect(file_meta).session is not None:
-                        session.expunge(file_meta)
-                    if file_hash and sa_inspect(file_hash).session is not None:
-                        session.expunge(file_hash)
-                    current_files.append((file_meta, file_hash))
+                    # 是当前目录的文件，转换为 DTO
+                    dto = FileWithHashDTO.from_orm(file_meta, file_hash)
+                    current_files.append(dto)
 
             logger.debug(
                 f"Extracted {len(directories)} directories and {len(current_files)} files"
