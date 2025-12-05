@@ -175,12 +175,14 @@ class BatchProcessor:
             except Exception:
                 pass
         except Exception as e:
-            logger.error(f"批量处理失败: {e}")
+            logger.error(f"批量处理失败: {e}", exc_info=True)
             try:
                 metrics.inc_errors("db_flush")
             except Exception:
                 pass
-            raise
+            # 清空失败的批次，避免重复处理导致死循环
+            self.batch_data.clear()
+            # 不再 raise，避免线程崩溃
 
     def flush(self):
         """强制刷新剩余的数据"""
@@ -277,7 +279,7 @@ def scan_archive_file(archive_path: Path):
                 entries_data.append((entry, virtual_path))
                 virtual_paths.append(virtual_path)
         except Exception as e:
-            logger.error(f"Error iterating archive entries in {archive_path}: {e}")
+            logger.error(f"Error iterating archive entries in {archive_path}: {e}", exc_info=True)
             try:
                 metrics.inc_errors("archive_iteration")
             except Exception:
@@ -327,7 +329,7 @@ def scan_archive_file(archive_path: Path):
                         pass
 
                 except Exception as e:
-                    logger.error(f"Error processing archived file {entry.name}: {e}")
+                    logger.error(f"Error processing archived file {entry.name}: {e}", exc_info=True)
                     try:
                         metrics.inc_errors("archive_read")
                     except Exception:
@@ -335,11 +337,11 @@ def scan_archive_file(archive_path: Path):
                     continue
 
             except Exception as e:
-                logger.error(f"Error processing archive entry {entry.name}: {e}")
+                logger.error(f"Error processing archive entry {entry.name}: {e}", exc_info=True)
                 continue
 
     except Exception as e:
-        logger.error(f"Error scanning archive {archive_path}: {e}")
+        logger.error(f"Error scanning archive {archive_path}: {e}", exc_info=True)
         try:
             metrics.inc_errors("scan_archive")
         except Exception:

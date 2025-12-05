@@ -224,7 +224,8 @@ class ZipArchiveScanner(ArchiveScanner):
                     except Exception as e:
                         # 捕获处理单个条目时的任何未预期异常
                         logger.warning(
-                            f"Unexpected error processing entry in ZIP {self.archive_path}: {e}"
+                            f"Unexpected error processing entry in ZIP {self.archive_path}: {e}",
+                            exc_info=True
                         )
                         fails += 1
                         if fails >= threshold:
@@ -234,7 +235,7 @@ class ZipArchiveScanner(ArchiveScanner):
                             break
                         continue
         except (zipfile.BadZipFile, Exception) as e:
-            logger.error(f"Error scanning ZIP file {self.archive_path}: {e}")
+            logger.error(f"Error scanning ZIP file {self.archive_path}: {e}", exc_info=True)
             metrics.inc_errors("archive_open")
 
 
@@ -310,7 +311,8 @@ class TarArchiveScanner(ArchiveScanner):
                     except Exception as e:
                         # 捕获处理单个条目时的任何未预期异常
                         logger.warning(
-                            f"Unexpected error processing entry in TAR {self.archive_path}: {e}"
+                            f"Unexpected error processing entry in TAR {self.archive_path}: {e}",
+                            exc_info=True
                         )
                         fails += 1
                         if fails >= threshold:
@@ -320,7 +322,7 @@ class TarArchiveScanner(ArchiveScanner):
                             break
                         continue
         except (tarfile.ReadError, Exception) as e:
-            logger.error(f"Error scanning TAR file {self.archive_path}: {e}")
+            logger.error(f"Error scanning TAR file {self.archive_path}: {e}", exc_info=True)
             metrics.inc_errors("archive_open")
 
 
@@ -396,7 +398,8 @@ class RarArchiveScanner(ArchiveScanner):
                     except Exception as e:
                         # 捕获处理单个条目时的任何未预期异常
                         logger.warning(
-                            f"Unexpected error processing entry in RAR {self.archive_path}: {e}"
+                            f"Unexpected error processing entry in RAR {self.archive_path}: {e}",
+                            exc_info=True
                         )
                         fails += 1
                         if fails >= threshold:
@@ -406,7 +409,7 @@ class RarArchiveScanner(ArchiveScanner):
                             break
                         continue
         except (rarfile.Error, Exception) as e:
-            logger.error(f"Error scanning RAR file {self.archive_path}: {e}")
+            logger.error(f"Error scanning RAR file {self.archive_path}: {e}", exc_info=True)
             metrics.inc_errors("archive_open")
 
 
