@@ -174,49 +174,62 @@ class ZipArchiveScanner(ArchiveScanner):
                     metrics.inc_errors("archive_list")
                     return
                 for info in entries:
-                    # 解码文件名
-                    decoded_filename = self._decode_filename(info)
-
-                    # 跳过目录
-                    if info.is_dir():
-                        continue
-
-                    # 跳过过大的文件
-                    if info.file_size > self.max_file_size:
-                        logger.warning(
-                            f"Skipping large file in ZIP: {decoded_filename} ({info.file_size} bytes)"
-                        )
-                        continue
-
-                    # 获取修改时间
                     try:
-                        modified = datetime.datetime(*info.date_time)
-                    except (ValueError, TypeError):
-                        modified = datetime.datetime.now()
+                        # 解码文件名
+                        decoded_filename = self._decode_filename(info)
 
-                    # 直接读取数据而不是创建延迟读取器
-                    try:
-                        data = zip_file.read(info.filename)
+                        # 跳过目录
+                        if info.is_dir():
+                            continue
 
-                        def make_reader(file_data):
-                            return lambda: file_data
+                        # 跳过过大的文件
+                        if info.file_size > self.max_file_size:
+                            logger.warning(
+                                f"Skipping large file in ZIP: {decoded_filename} ({info.file_size} bytes)"
+                            )
+                            continue
 
-                        entry = ArchiveEntry(
-                            name=decoded_filename,
-                            size=info.file_size,
-                            modified=modified,
-                            data_reader=make_reader(data),
-                        )
-                        yield entry
-                    except (zipfile.BadZipFile, zipfile.LargeZipFile, Exception) as e:
+                        # 获取修改时间
+                        try:
+                            modified = datetime.datetime(*info.date_time)
+                        except (ValueError, TypeError):
+                            modified = datetime.datetime.now()
+
+                        # 直接读取数据而不是创建延迟读取器
+                        try:
+                            data = zip_file.read(info.filename)
+
+                            def make_reader(file_data):
+                                return lambda: file_data
+
+                            entry = ArchiveEntry(
+                                name=decoded_filename,
+                                size=info.file_size,
+                                modified=modified,
+                                data_reader=make_reader(data),
+                            )
+                            yield entry
+                        except (zipfile.BadZipFile, zipfile.LargeZipFile, Exception) as e:
+                            logger.warning(
+                                f"Error reading file {decoded_filename} from ZIP: {e}"
+                            )
+                            metrics.inc_errors("archive_entry_read")
+                            fails += 1
+                            if fails >= threshold:
+                                logger.warning(
+                                    f"Too many entry read failures in ZIP, skipping archive: {self.archive_path}"
+                                )
+                                break
+                            continue
+                    except Exception as e:
+                        # 捕获处理单个条目时的任何未预期异常
                         logger.warning(
-                            f"Error reading file {decoded_filename} from ZIP: {e}"
+                            f"Unexpected error processing entry in ZIP {self.archive_path}: {e}"
                         )
-                        metrics.inc_errors("archive_entry_read")
                         fails += 1
                         if fails >= threshold:
                             logger.warning(
-                                f"Too many entry read failures in ZIP, skipping archive: {self.archive_path}"
+                                f"Too many failures in ZIP, skipping archive: {self.archive_path}"
                             )
                             break
                         continue
@@ -242,54 +255,67 @@ class TarArchiveScanner(ArchiveScanner):
                     metrics.inc_errors("archive_list")
                     return
                 for member in members:
-                    # 跳过目录
-                    if member.isdir():
-                        continue
-
-                    # 跳过非常规文件
-                    if not member.isfile():
-                        continue
-
-                    # 跳过过大的文件
-                    if member.size > self.max_file_size:
-                        logger.warning(
-                            f"Skipping large file in TAR: {member.name} ({member.size} bytes)"
-                        )
-                        continue
-
-                    # 获取修改时间
                     try:
-                        modified = datetime.datetime.fromtimestamp(member.mtime)
-                    except (ValueError, OSError):
-                        modified = datetime.datetime.now()
+                        # 跳过目录
+                        if member.isdir():
+                            continue
 
-                    # 直接读取数据
-                    try:
-                        extracted_file = tar_file.extractfile(member)
-                        if extracted_file:
-                            data = extracted_file.read()
+                        # 跳过非常规文件
+                        if not member.isfile():
+                            continue
 
-                            def make_reader(file_data):
-                                return lambda: file_data
-
-                            entry = ArchiveEntry(
-                                name=member.name,
-                                size=member.size,
-                                modified=modified,
-                                data_reader=make_reader(data),
-                            )
-                            yield entry
-                        else:
+                        # 跳过过大的文件
+                        if member.size > self.max_file_size:
                             logger.warning(
-                                f"Cannot extract file {member.name} from TAR"
+                                f"Skipping large file in TAR: {member.name} ({member.size} bytes)"
                             )
-                    except (tarfile.ReadError, Exception) as e:
-                        logger.warning(f"Error reading file {member.name} from TAR: {e}")
-                        metrics.inc_errors("archive_entry_read")
+                            continue
+
+                        # 获取修改时间
+                        try:
+                            modified = datetime.datetime.fromtimestamp(member.mtime)
+                        except (ValueError, OSError):
+                            modified = datetime.datetime.now()
+
+                        # 直接读取数据
+                        try:
+                            extracted_file = tar_file.extractfile(member)
+                            if extracted_file:
+                                data = extracted_file.read()
+
+                                def make_reader(file_data):
+                                    return lambda: file_data
+
+                                entry = ArchiveEntry(
+                                    name=member.name,
+                                    size=member.size,
+                                    modified=modified,
+                                    data_reader=make_reader(data),
+                                )
+                                yield entry
+                            else:
+                                logger.warning(
+                                    f"Cannot extract file {member.name} from TAR"
+                                )
+                        except (tarfile.ReadError, Exception) as e:
+                            logger.warning(f"Error reading file {member.name} from TAR: {e}")
+                            metrics.inc_errors("archive_entry_read")
+                            fails += 1
+                            if fails >= threshold:
+                                logger.warning(
+                                    f"Too many entry read failures in TAR, skipping archive: {self.archive_path}"
+                                )
+                                break
+                            continue
+                    except Exception as e:
+                        # 捕获处理单个条目时的任何未预期异常
+                        logger.warning(
+                            f"Unexpected error processing entry in TAR {self.archive_path}: {e}"
+                        )
                         fails += 1
                         if fails >= threshold:
                             logger.warning(
-                                f"Too many entry read failures in TAR, skipping archive: {self.archive_path}"
+                                f"Too many failures in TAR, skipping archive: {self.archive_path}"
                             )
                             break
                         continue
@@ -315,54 +341,67 @@ class RarArchiveScanner(ArchiveScanner):
                     metrics.inc_errors("archive_list")
                     return
                 for info in infos:
-                    # 跳过目录
-                    if info.is_dir():
-                        continue
-
-                    # 跳过过大的文件
-                    if info.file_size > self.max_file_size:
-                        logger.warning(
-                            f"Skipping large file in RAR: {info.filename} ({info.file_size} bytes)"
-                        )
-                        continue
-
-                    # 获取修改时间
                     try:
-                        modified = info.date_time
-                        if not isinstance(modified, datetime.datetime):
+                        # 跳过目录
+                        if info.is_dir():
+                            continue
+
+                        # 跳过过大的文件
+                        if info.file_size > self.max_file_size:
+                            logger.warning(
+                                f"Skipping large file in RAR: {info.filename} ({info.file_size} bytes)"
+                            )
+                            continue
+
+                        # 获取修改时间
+                        try:
+                            modified = info.date_time
+                            if not isinstance(modified, datetime.datetime):
+                                modified = datetime.datetime.now()
+                        except (ValueError, AttributeError):
                             modified = datetime.datetime.now()
-                    except (ValueError, AttributeError):
-                        modified = datetime.datetime.now()
 
-                    # 直接读取数据
-                    try:
-                        data = rar_file.read(info.filename)
+                        # 直接读取数据
+                        try:
+                            data = rar_file.read(info.filename)
 
-                        def make_reader(file_data):
-                            return lambda: file_data
+                            def make_reader(file_data):
+                                return lambda: file_data
 
-                        entry = ArchiveEntry(
-                            name=info.filename,
-                            size=info.file_size,
-                            modified=modified,
-                            data_reader=make_reader(data),
-                        )
-                        yield entry
-                    except (
-                        rarfile.BadRarFile,
-                        rarfile.NeedFirstVolume,
-                        rarfile.RarCRCError,
-                        rarfile.Error,
-                        Exception,
-                    ) as e:
+                            entry = ArchiveEntry(
+                                name=info.filename,
+                                size=info.file_size,
+                                modified=modified,
+                                data_reader=make_reader(data),
+                            )
+                            yield entry
+                        except (
+                            rarfile.BadRarFile,
+                            rarfile.NeedFirstVolume,
+                            rarfile.RarCRCError,
+                            rarfile.Error,
+                            Exception,
+                        ) as e:
+                            logger.warning(
+                                f"Error reading file {info.filename} from RAR: {e}"
+                            )
+                            metrics.inc_errors("archive_entry_read")
+                            fails += 1
+                            if fails >= threshold:
+                                logger.warning(
+                                    f"Too many entry read failures in RAR, skipping archive: {self.archive_path}"
+                                )
+                                break
+                            continue
+                    except Exception as e:
+                        # 捕获处理单个条目时的任何未预期异常
                         logger.warning(
-                            f"Error reading file {info.filename} from RAR: {e}"
+                            f"Unexpected error processing entry in RAR {self.archive_path}: {e}"
                         )
-                        metrics.inc_errors("archive_entry_read")
                         fails += 1
                         if fails >= threshold:
                             logger.warning(
-                                f"Too many entry read failures in RAR, skipping archive: {self.archive_path}"
+                                f"Too many failures in RAR, skipping archive: {self.archive_path}"
                             )
                             break
                         continue
