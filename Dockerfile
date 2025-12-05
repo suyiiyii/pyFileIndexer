@@ -16,15 +16,13 @@ COPY ./frontend/vite.config.ts ./
 COPY ./frontend/tailwind.config.js ./
 COPY ./frontend/eslint.config.js ./
 
-# 安装前端依赖（包括开发依赖，构建时需要）
+# 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 复制前端源码并构建
+# 复制源码并构建
 COPY ./frontend/src ./src
 COPY ./frontend/index.html ./
 COPY ./frontend/public ./public
-
-# 构建前端
 RUN pnpm run build
 
 # ============================================================================
@@ -32,34 +30,45 @@ RUN pnpm run build
 # ============================================================================
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS runtime
 
-# 安装 RAR 解压工具
+# 安装系统依赖 (UNAR)
 RUN apt-get update && \
     apt-get install -y unar && \
     rm -rf /var/lib/apt/lists/*
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制 Python 项目配置并安装依赖
+# 1. 先复制依赖定义文件 (利用 Docker 缓存层)
 COPY ./pyproject.toml ./uv.lock ./
 
-# 复制应用代码
+# 2. 安装依赖 (不安装项目本身，只安装 dependencies)
+# --no-dev: 生产环境通常不需要开发依赖
+# --no-install-project: 我们只需要环境，不需要把当前目录打包安装
+RUN uv sync --frozen --no-dev --no-install-project
+
+# 3. 复制源代码 (放在安装依赖之后，因为代码变动频繁)
 COPY ./pyFileIndexer ./pyFileIndexer
+# 如果你的入口逻辑完全在 pyFileIndexer 包里，其实不需要根目录的 main.py
+# 但为了兼容你之前的结构，这里还是复制一下，如果没用到可以删除
 COPY ./main.py ./
 
-# 安装依赖
-RUN uv sync --frozen
-
-# 从前端构建阶段复制构建产物
+# 4. 复制前端产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 暴露端口
 EXPOSE 8000
 
+# 将 .venv 添加到 PATH，这样可以直接使用 "python" 而不是 "/app/.venv/bin/python"
+ENV PATH="/app/.venv/bin:$PATH"
+
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# 启动命令 - 使用新的包方式
-ENTRYPOINT ["uv", "run", "python", "-m", "pyFileIndexer"]
+# ==================== 核心修改 ====================
+# 使用 Exec 格式，并且直接调用 python，跳过 uv run 的构建检查
+# 注意：这里假设你的入口是 pyFileIndexer.main 模块
+ENTRYPOINT ["python", "-m", "pyFileIndexer.main"]
+
+# CMD 作为默认参数传递给 ENTRYPOINT
+# 用户运行时可以覆盖：docker run my-image scan /data
 CMD ["--help"]
