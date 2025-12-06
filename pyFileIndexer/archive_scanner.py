@@ -195,7 +195,7 @@ class ZipArchiveScanner(ArchiveScanner):
                         except (ValueError, TypeError):
                             modified = datetime.datetime.now()
 
-                        # 直接读取数据而不是创建延迟读取器
+                        # 提前读取数据（注意：会占用内存，但必须在 zip_file 打开时读取）
                         try:
                             data = zip_file.read(info.filename)
 
@@ -284,7 +284,7 @@ class TarArchiveScanner(ArchiveScanner):
                         except (ValueError, OSError):
                             modified = datetime.datetime.now()
 
-                        # 直接读取数据
+                        # 提前读取数据（注意：会占用内存，但必须在 tar_file 打开时读取）
                         try:
                             extracted_file = tar_file.extractfile(member)
                             if extracted_file:
@@ -373,7 +373,7 @@ class RarArchiveScanner(ArchiveScanner):
                         except (ValueError, AttributeError):
                             modified = datetime.datetime.now()
 
-                        # 直接读取数据
+                        # 提前读取数据（注意：会占用内存，但必须在 rar_file 打开时读取）
                         try:
                             data = rar_file.read(info.filename)
 

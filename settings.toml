@@ -4,3 +4,10 @@ max_archive_size = 524288000  # 500MB in bytes
 supported_archive_formats = [".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".rar"]
 extract_nested_archives = false
 max_archive_file_size = 104857600  # 100MB in bytes for files within archives
+
+[memory]
+# Memory management configuration
+max_memory_mb = 2048          # Memory usage alert threshold (MB)
+archive_batch_size = 100      # Archive entry batch size (recommended: 50-200)
+file_batch_size = 100         # File batch size (recommended: 50-200)
+enable_memory_monitor = false # Enable memory monitoring (optional feature)

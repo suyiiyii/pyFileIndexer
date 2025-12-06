@@ -103,7 +103,15 @@ class TestZipArchiveScanner:
         zip_path = self.create_test_zip(files_data)
         try:
             scanner = ZipArchiveScanner(zip_path)
-            entries = list(scanner.scan_entries())
+            entries = []
+            file1_data = None
+
+            # 注意：必须在 scanner 生命周期内读取数据（延迟读取模式）
+            for entry in scanner.scan_entries():
+                entries.append(entry)
+                # 在生成器迭代时立即读取数据
+                if entry.name == "file1.txt":
+                    file1_data = entry.read_data()
 
             assert len(entries) == 3
             entry_names = [entry.name for entry in entries]
@@ -111,9 +119,9 @@ class TestZipArchiveScanner:
             assert "dir/file2.txt" in entry_names
             assert "file3.py" in entry_names
 
-            # 测试读取文件数据
-            file1_entry = next(entry for entry in entries if entry.name == "file1.txt")
-            assert file1_entry.read_data().decode() == "Content of file 1"
+            # 验证读取的数据
+            assert file1_data is not None
+            assert file1_data.decode() == "Content of file 1"
 
         finally:
             os.unlink(zip_path)

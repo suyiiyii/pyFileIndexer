@@ -8,6 +8,12 @@ settings = Dynaconf(
 # `envvar_prefix` = export envvars with `export DYNACONF_FOO=bar`.
 # `settings_files` = Load these files in the order.
 
+# Memory management configuration
+MAX_MEMORY_MB = settings.get("memory.max_memory_mb", 2048)
+ARCHIVE_BATCH_SIZE = settings.get("memory.archive_batch_size", 100)
+FILE_BATCH_SIZE = settings.get("memory.file_batch_size", 100)
+ENABLE_MEMORY_MONITOR = settings.get("memory.enable_memory_monitor", False)
+
 
 def validate_settings():
     """验证关键配置项，提供有用的错误信息。"""

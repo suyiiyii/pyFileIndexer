@@ -142,7 +142,12 @@ lock = threading.Lock()
 class BatchProcessor:
     """批量文件处理器"""
 
-    def __init__(self, batch_size: int = 200):
+    def __init__(self, batch_size: int | None = None):
+        # 从配置读取批次大小，允许用户灵活调整
+        if batch_size is None:
+            from .config import FILE_BATCH_SIZE
+
+            batch_size = FILE_BATCH_SIZE
         self.batch_size = batch_size
         self.batch_data = []
         self.lock = threading.Lock()
@@ -271,7 +276,10 @@ def scan_archive_file(archive_path: Path):
         scanned = cached_config.scanned
 
         # 分批处理：避免大压缩包一次性加载所有条目到内存
-        BATCH_SIZE = 500  # 每批处理 500 个条目
+        # 从配置读取批次大小，允许用户灵活调整
+        from .config import ARCHIVE_BATCH_SIZE
+
+        BATCH_SIZE = ARCHIVE_BATCH_SIZE
         entries_batch = []
         virtual_paths_batch = []
 
