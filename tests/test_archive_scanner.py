@@ -15,6 +15,7 @@ from pyFileIndexer.archive_scanner import (
     TarArchiveScanner,
     create_archive_scanner,
     calculate_hash_from_data,
+    calculate_hash_from_chunks,
 )
 
 
@@ -70,6 +71,7 @@ class TestArchiveEntry:
             "test.txt", len(test_data), datetime.datetime.now(), data_reader=reader
         )
         assert entry.read_data() == test_data
+        assert b"".join(entry.iter_data()) == test_data
 
 
 class TestZipArchiveScanner:
@@ -234,6 +236,14 @@ class TestHashCalculation:
 
         assert hashes["md5"] == "d41d8cd98f00b204e9800998ecf8427e"
         assert hashes["sha1"] == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+
+    def test_calculate_hash_from_chunks(self):
+        """测试流式哈希计算"""
+        chunks = [b"Hello, ", b"World!"]
+        hashes_stream = calculate_hash_from_chunks(chunks)
+        hashes_bytes = calculate_hash_from_data(b"Hello, World!")
+
+        assert hashes_stream == hashes_bytes
 
 
 class TestFileMetaCreation:

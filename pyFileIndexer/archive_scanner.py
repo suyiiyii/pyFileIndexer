@@ -2,7 +2,7 @@ import logging
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import Generator, Optional, Union
+from typing import Callable, Generator, Iterable, Optional, Union
 import datetime
 
 import rarfile
@@ -69,7 +69,7 @@ class ArchiveEntry:
         size: int,
         modified: datetime.datetime,
         is_dir: bool = False,
-        data_reader: Optional[callable] = None,
+        data_reader: Optional[Callable[[], Union[Iterable[bytes], bytes, None]]] = None,
     ):
         self.name = name
         self.size = size
@@ -78,10 +78,48 @@ class ArchiveEntry:
         self.data_reader = data_reader
 
     def read_data(self) -> bytes:
-        """读取文件数据"""
-        if self.data_reader:
-            return self.data_reader()
-        return b""
+        """
+        读取文件数据（完整加载到内存）。
+
+        注：仅用于小文件或测试，真实扫描过程中应使用 iter_data
+        以避免大文件占用大量内存。
+        """
+        return b"".join(self.iter_data())
+
+    def iter_data(self, chunk_size: int = 1024 * 1024) -> Generator[bytes, None, None]:
+        """分块读取文件数据，减少内存占用。"""
+        if not self.data_reader:
+            return
+
+        data_source = self.data_reader()
+        if data_source is None:
+            return
+
+        try:
+            if isinstance(data_source, (bytes, bytearray)):
+                yield bytes(data_source)
+                return
+
+            # 文件对象
+            reader = getattr(data_source, "read", None)
+            if callable(reader):
+                while True:
+                    chunk = reader(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+                return
+
+            # 迭代器 / 生成器
+            for chunk in data_source:  # type: ignore
+                yield chunk
+        finally:
+            try:
+                closer = getattr(data_source, "close", None)
+                if callable(closer):
+                    closer()
+            except Exception:
+                pass
 
 
 class ArchiveScanner:
@@ -160,6 +198,23 @@ class ZipArchiveScanner(ArchiveScanner):
         logger.warning(f"Cannot decode filename: {zip_info.filename!r}")
         return zip_info.filename
 
+    def _make_zip_reader(self, filename: str):
+        """为 ZIP 条目创建流式读取器，按需重新打开压缩包。"""
+
+        def reader():
+            zip_handle = zipfile.ZipFile(self.archive_path, "r")
+            try:
+                with zip_handle.open(filename, "r") as f:
+                    for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                        yield chunk
+            finally:
+                try:
+                    zip_handle.close()
+                except Exception:
+                    pass
+
+        return reader
+
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
         fails = 0
         threshold = getattr(cached_config, "archive_entry_fail_threshold", 50)
@@ -195,27 +250,18 @@ class ZipArchiveScanner(ArchiveScanner):
                         except (ValueError, TypeError):
                             modified = datetime.datetime.now()
 
-                        # 提前读取数据（注意：会占用内存，但必须在 zip_file 打开时读取）
+                        # 创建流式读取器，避免一次性加载内存
                         try:
-                            data = zip_file.read(info.filename)
-
-                            def make_reader(file_data):
-                                return lambda: file_data
-
                             entry = ArchiveEntry(
                                 name=decoded_filename,
                                 size=info.file_size,
                                 modified=modified,
-                                data_reader=make_reader(data),
+                                data_reader=self._make_zip_reader(info.filename),
                             )
                             yield entry
-                        except (
-                            zipfile.BadZipFile,
-                            zipfile.LargeZipFile,
-                            Exception,
-                        ) as e:
+                        except Exception as e:
                             logger.warning(
-                                f"Error reading file {decoded_filename} from ZIP: {e}"
+                                f"Error preparing file {decoded_filename} from ZIP: {e}"
                             )
                             metrics.inc_errors("archive_entry_read")
                             fails += 1
@@ -247,6 +293,26 @@ class ZipArchiveScanner(ArchiveScanner):
 
 class TarArchiveScanner(ArchiveScanner):
     """TAR文件扫描器"""
+
+    def _make_tar_reader(self, member_name: str):
+        """为 TAR 条目创建流式读取器。"""
+
+        def reader():
+            tar_handle = tarfile.open(self.archive_path, "r:*")
+            try:
+                extracted_file = tar_handle.extractfile(member_name)
+                if not extracted_file:
+                    return
+                with extracted_file:
+                    for chunk in iter(lambda: extracted_file.read(1024 * 1024), b""):
+                        yield chunk
+            finally:
+                try:
+                    tar_handle.close()
+                except Exception:
+                    pass
+
+        return reader
 
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
         fails = 0
@@ -284,29 +350,18 @@ class TarArchiveScanner(ArchiveScanner):
                         except (ValueError, OSError):
                             modified = datetime.datetime.now()
 
-                        # 提前读取数据（注意：会占用内存，但必须在 tar_file 打开时读取）
+                        # 创建流式读取器，避免一次性加载内存
                         try:
-                            extracted_file = tar_file.extractfile(member)
-                            if extracted_file:
-                                data = extracted_file.read()
-
-                                def make_reader(file_data):
-                                    return lambda: file_data
-
-                                entry = ArchiveEntry(
-                                    name=member.name,
-                                    size=member.size,
-                                    modified=modified,
-                                    data_reader=make_reader(data),
-                                )
-                                yield entry
-                            else:
-                                logger.warning(
-                                    f"Cannot extract file {member.name} from TAR"
-                                )
+                            entry = ArchiveEntry(
+                                name=member.name,
+                                size=member.size,
+                                modified=modified,
+                                data_reader=self._make_tar_reader(member.name),
+                            )
+                            yield entry
                         except (tarfile.ReadError, Exception) as e:
                             logger.warning(
-                                f"Error reading file {member.name} from TAR: {e}"
+                                f"Error preparing file {member.name} from TAR: {e}"
                             )
                             metrics.inc_errors("archive_entry_read")
                             fails += 1
@@ -338,6 +393,23 @@ class TarArchiveScanner(ArchiveScanner):
 
 class RarArchiveScanner(ArchiveScanner):
     """RAR文件扫描器"""
+
+    def _make_rar_reader(self, filename: str):
+        """为 RAR 条目创建流式读取器。"""
+
+        def reader():
+            rar_handle = rarfile.RarFile(self.archive_path)
+            try:
+                with rar_handle.open(filename) as f:
+                    for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                        yield chunk
+            finally:
+                try:
+                    rar_handle.close()
+                except Exception:
+                    pass
+
+        return reader
 
     def scan_entries(self) -> Generator[ArchiveEntry, None, None]:
         fails = 0
@@ -373,18 +445,13 @@ class RarArchiveScanner(ArchiveScanner):
                         except (ValueError, AttributeError):
                             modified = datetime.datetime.now()
 
-                        # 提前读取数据（注意：会占用内存，但必须在 rar_file 打开时读取）
+                        # 创建流式读取器，避免一次性加载内存
                         try:
-                            data = rar_file.read(info.filename)
-
-                            def make_reader(file_data):
-                                return lambda: file_data
-
                             entry = ArchiveEntry(
                                 name=info.filename,
                                 size=info.file_size,
                                 modified=modified,
-                                data_reader=make_reader(data),
+                                data_reader=self._make_rar_reader(info.filename),
                             )
                             yield entry
                         except (
@@ -395,7 +462,7 @@ class RarArchiveScanner(ArchiveScanner):
                             Exception,
                         ) as e:
                             logger.warning(
-                                f"Error reading file {info.filename} from RAR: {e}"
+                                f"Error preparing file {info.filename} from RAR: {e}"
                             )
                             metrics.inc_errors("archive_entry_read")
                             fails += 1
@@ -459,6 +526,28 @@ def calculate_hash_from_data(data: bytes) -> dict[str, str]:
     md5.update(data)
     sha1.update(data)
     sha256.update(data)
+
+    return {
+        "md5": md5.hexdigest(),
+        "sha1": sha1.hexdigest(),
+        "sha256": sha256.hexdigest(),
+    }
+
+
+def calculate_hash_from_chunks(chunks: Iterable[bytes]) -> dict[str, str]:
+    """从数据块迭代器计算文件哈希（流式，避免占用大量内存）。"""
+    import hashlib
+
+    md5 = hashlib.md5()
+    sha1 = hashlib.sha1()
+    sha256 = hashlib.sha256()
+
+    for chunk in chunks:
+        if not chunk:
+            continue
+        md5.update(chunk)
+        sha1.update(chunk)
+        sha256.update(chunk)
 
     return {
         "md5": md5.hexdigest(),

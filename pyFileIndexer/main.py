@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from .archive_scanner import (
-    calculate_hash_from_data,
+    calculate_hash_from_chunks,
     create_archive_scanner,
     is_archive_file,
     get_archive_type,
@@ -380,8 +380,7 @@ def _process_archive_batch(
 
             # 计算文件哈希
             try:
-                data = entry.read_data()
-                hashes = calculate_hash_from_data(data)
+                hashes = calculate_hash_from_chunks(entry.iter_data())
                 file_hash = FileHash(**hashes, size=entry.size)
 
                 # 添加到批量处理队列
